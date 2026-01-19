@@ -1,6 +1,6 @@
 import { Activity, LayoutDashboard, Play, FileText, LogOut, User } from 'lucide-react';
 
-type Page = 'dashboard' | 'video' | 'report' | 'account';
+export type Page = 'dashboard' | 'video' | 'report' | 'account';
 
 interface HeaderProps {
   currentPage: Page;
@@ -18,13 +18,19 @@ export function Header({ currentPage, onNavigate, onLogout, hasSelectedVideo }: 
   ];
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-      <div className="container mx-auto px-6">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2 text-blue-600 py-4 font-bold italic tracking-tight">
-            <Activity className="size-6" />
-            <span className="text-xl">RallyTrack</span>
+    <header className="h-16 flex items-center px-6 bg-white border-b border-gray-200 sticky top-0 z-50">
+  <div className="container mx-auto px-6">
+    <div className="flex items-center justify-between">
+      {/* Logo */}
+      <div className="flex items-center gap-2 text-blue-600 font-bold italic tracking-tight">
+        <span className="logo_img flex items-center translate-y-6">
+          <img
+            src="/RallyTrack.svg"
+            alt="RallyTrack"
+            className="h-24 w-auto"
+          />
+        </span>
+
           </div>
 
           {/* Tabs */}
