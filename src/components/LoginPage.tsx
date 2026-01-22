@@ -22,8 +22,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       {/* Left side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-indigo-700 p-12 flex-col justify-between">
         <div className="flex items-center gap-3 text-white">
-          <Activity className="size-10" />
-          <span className="text-2xl">BadmintonAI</span>
+         <span className="logo_img flex items-center" ><img
+        src="/RallyTrackWhite.svg"
+        alt="RallyTrack"
+        className="h-20 w-auto"
+      />
+      </span>
         </div>
         <div className="text-white">
           <h1 className="text-5xl mb-6">
