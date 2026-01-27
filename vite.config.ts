@@ -18,4 +18,13 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://13.125.8.150', // 백엔드 서버 IP
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })

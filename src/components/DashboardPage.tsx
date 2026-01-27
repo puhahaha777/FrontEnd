@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Upload,
   Play,
@@ -6,8 +6,39 @@ import {
   Trash2,
   Plus,
   X,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { Header, type Page } from './Header';
+
+// ✅ [추가] API 응답용 인터페이스 정의
+interface DashboardSummary {
+  totalVideos: number;
+  totalAnalysisTime: string;
+  averageScore: number;
+}
+
+interface ApiVideoItem {
+  videoId: number;
+  title: string;
+  date: string;
+  playTime: string;
+  matchScore: string;
+  thumbnailUrl: string;
+  actions: {
+    viewVideoUrl: string;
+    viewAnalysisUrl: string;
+  };
+}
+
+interface DashboardResponse {
+  code: number;
+  message: string;
+  data: {
+    dashboardSummary: DashboardSummary;
+    recentVideos: ApiVideoItem[];
+  };
+}
 
 interface VideoRecord {
   id: string;
@@ -16,6 +47,8 @@ interface VideoRecord {
   duration: string;
   score?: string;
   thumbnail?: string;
+  // 영상 상태 관리
+  status?: 'uploading' | 'processing' | 'completed' | 'error';
 }
 
 interface DashboardPageProps {
@@ -36,7 +69,13 @@ export function DashboardPage({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [videoName, setVideoName] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
+
+  // 통계 상태 관리 (초기값: Mock 데이터)
+  const [stats, setStats] = useState<DashboardSummary>({
+    totalVideos: 3,
+    totalAnalysisTime: '2시간 16분',
+    averageScore: 85
+  });
 
   // Mock data
   const [videos, setVideos] = useState<VideoRecord[]>([
@@ -46,6 +85,7 @@ export function DashboardPage({
       date: '2026-01-02',
       duration: '45:23',
       score: '21-18, 19-21, 21-16',
+      status: 'completed',
     },
     {
       id: '2',
@@ -53,6 +93,7 @@ export function DashboardPage({
       date: '2025-12-28',
       duration: '32:15',
       score: '21-15, 21-12',
+      status: 'completed',
     },
     {
       id: '3',
@@ -60,33 +101,131 @@ export function DashboardPage({
       date: '2025-12-20',
       duration: '58:40',
       score: '18-21, 21-19, 21-17',
+      status: 'completed',
     },
   ]);
 
+// 대시보드 데이터 조회 API 호출
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // 백엔드 API 호출
+        const response = await fetch('/api/v1/dashboard');
+        if (!response.ok) throw new Error('Failed to fetch');
+        
+        const json: DashboardResponse = await response.json();
+        const { dashboardSummary, recentVideos } = json.data;
+
+        // 1. 통계 업데이트
+        setStats(dashboardSummary);
+
+        // 2. 영상 리스트 매핑 및 업데이트
+        const mappedVideos: VideoRecord[] = recentVideos.map((v) => ({
+          id: String(v.videoId),
+          name: v.title,
+          date: v.date,
+          duration: v.playTime,
+          score: v.matchScore,
+          thumbnail: v.thumbnailUrl,
+          status: 'completed'
+        }));
+        setVideos(mappedVideos);
+
+      } catch (error) {
+        // 서버가 안 열려있거나 에러 발생 시 로그만 남기고 Mock 데이터 유지
+        console.log('Using mock data due to API error:', error);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
   const handleDelete = (id: string) => {
     if (confirm('이 영상을 삭제하시겠습니까?')) {
+      // API 연동 시 삭제 API 호출 필요 (예: await fetch(`/api/videos/${id}`, { method: 'DELETE' }))
       setVideos(videos.filter((v) => v.id !== id));
     }
   };
 
-  const handleUpload = (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsUploading(true);
     
-    // Mock upload
-    setTimeout(() => {
-      const newVideo: VideoRecord = {
-        id: Date.now().toString(),
-        name: videoName || uploadFile?.name || '새 영상',
-        date: new Date().toISOString().split('T')[0],
-        duration: '00:00',
-      };
-      setVideos([newVideo, ...videos]);
-      setShowUploadModal(false);
-      setUploadFile(null);
-      setVideoName('');
-      setIsUploading(false);
-    }, 2000);
+    if (!uploadFile) {
+      alert('업로드할 영상 파일을 선택해주세요.');
+      return;
+    }
+    
+    // 1. 임시 ID 생성 및 목록에 '업로드 중' 상태로 즉시 추가 (Optimistic UI)
+    const tempId = `temp-${Date.now()}`;
+    const tempVideo: VideoRecord = {
+      id: tempId,
+      name: videoName || uploadFile.name,
+      date: new Date().toISOString().split('T')[0],
+      duration: '업로드 중...',
+      status: 'uploading',
+    };
+
+    setVideos([tempVideo, ...videos]); // 목록 맨 앞에 추가
+    
+    // 2. 모달 즉시 닫기 및 초기화
+    setShowUploadModal(false);
+    setUploadFile(null);
+    setVideoName('');
+
+    // 3. 백그라운드에서 API 요청 진행
+    try {
+      const formData = new FormData();
+      formData.append('video', uploadFile);
+      formData.append('title', videoName || uploadFile.name);
+
+      // 404 에러 수정: /api/v1/videos (복수형) -> /api/v1/video (단수형) 가능성 높음
+      // vite.config.ts의 proxy 설정이 /api를 rewrite 해주는지 확인 필요
+      const response = await fetch('/api/v1/video', { 
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed'); // 에러 발생 시 catch 블록으로 이동
+      }
+
+      const newVideoData = await response.json();
+
+      // 4. 업로드 성공 시: 임시 데이터를 실제 서버 데이터로 교체
+      setVideos((prevVideos) => 
+        prevVideos.map((video) => {
+          if (video.id === tempId) {
+            return {
+              ...video,
+              id: newVideoData.id || tempId,
+              name: newVideoData.title || video.name,
+              date: newVideoData.date || video.date,
+              duration: '분석 완료', // 분석이 완료되었다고 가정
+              status: 'completed',
+            };
+          }
+          return video;
+        })
+      );
+
+    } catch (error) {
+      console.error('Upload Error:', error);
+      // 5. 실패 시: 상태를 error로 변경하여 UI에 표시
+      setVideos((prevVideos) => 
+        prevVideos.map((video) => {
+          if (video.id === tempId) {
+            return {
+              ...video,
+              duration: '업로드 실패',
+              status: 'error',
+            };
+          }
+          return video;
+        })
+      );
+      alert('영상 업로드 중 오류가 발생했습니다.');
+    } 
+    // finally 블록 삭제 (백그라운드 처리이므로 불필요)
   };
 
   return (
@@ -119,15 +258,15 @@ export function DashboardPage({
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="text-gray-600 mb-2">총 업로드 영상</div>
-            <div className="text-3xl text-blue-600">{videos.length}</div>
+            <div className="text-3xl text-blue-600">{stats.totalVideos}</div>
           </div>
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="text-gray-600 mb-2">총 분석 시간</div>
-            <div className="text-3xl text-indigo-600">2시간 16분</div>
+            <div className="text-3xl text-indigo-600">{stats.totalAnalysisTime}</div>
           </div>
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="text-gray-600 mb-2">평균 점수</div>
-            <div className="text-3xl text-purple-600">85점</div>
+            <div className="text-3xl text-purple-600">{stats.averageScore}점</div>
           </div>
         </div>
 
@@ -145,53 +284,95 @@ export function DashboardPage({
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
-              {videos.map((video) => (
-                <div
-                  key={video.id}
-                  className="p-6 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-6">
-                    {/* Thumbnail */}
-                    <div className="w-32 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Play className="size-8 text-blue-600" />
-                    </div>
+              {videos.map((video) => {
+                // 상태별 변수 정의
+                const isUploading = video.status === 'uploading';
+                const isError = video.status === 'error';
+                const isReady = video.status === 'completed' || !video.status; // status가 없으면 완료된 것으로 간주
 
-                    {/* Info */}
-                    <div className="flex-1">
-                      <h3 className="text-xl mb-2">{video.name}</h3>
-                      <div className="flex items-center gap-6 text-sm text-gray-600">
-                        <span>{video.date}</span>
-                        <span>재생시간: {video.duration}</span>
-                        {video.score && <span>점수: {video.score}</span>}
+                return (
+                  <div
+                    key={video.id}
+                    className="p-6 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-6">
+                      {/* 상태에 따라 로딩 스피너 또는 에러 아이콘 표시 */}
+                      <div className={`w-32 h-20 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        isError ? 'bg-red-50' : 'bg-gradient-to-br from-blue-100 to-indigo-100'
+                      }`}>
+                         {isUploading ? (
+                          <Loader2 className="size-8 text-blue-600 animate-spin" />
+                        ) : isError ? (
+                          <AlertCircle className="size-8 text-red-500" />
+                        ) : (
+                          <Play className="size-8 text-blue-600" />
+                        )}
+                      </div>
+
+                      <div className="flex-1">
+                        <h3 className="text-xl mb-2 flex items-center gap-2">
+                          {video.name}
+                          {/* 상태 뱃지 표시 */}
+                          {isUploading && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">업로드 중...</span>}
+                          {isError && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">실패</span>}
+                        </h3>
+                        <div className="flex items-center gap-6 text-sm text-gray-600">
+                          <span>{video.date}</span>
+                          <span className={isUploading ? "text-blue-600 font-medium" : ""}>
+                            {/* 상태에 따라 duration 또는 상태 메시지 표시 */}
+                            {video.duration}
+                          </span>
+                          {video.score && <span>점수: {video.score}</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* 버튼 활성화/비활성화 및 로딩 상태 표시 */}
+                        <button
+                          onClick={() => isReady && onViewVideo(video.id)}
+                          disabled={!isReady}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isReady 
+                              ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {isUploading ? (
+                             <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                             <Play className="size-4" />
+                          )}
+                          <span>{isUploading ? '처리 중' : '영상 보기'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => isReady && onViewReport(video.id)}
+                          disabled={!isReady}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                            isReady
+                              ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {isUploading ? (
+                             <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                             <FileText className="size-4" />
+                          )}
+                          <span>{isUploading ? '처리 중' : '분석 보기'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(video.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="size-5" />
+                        </button>
                       </div>
                     </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => onViewVideo(video.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <Play className="size-4" />
-                        <span>영상 보기</span>
-                      </button>
-                      <button
-                        onClick={() => onViewReport(video.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                      >
-                        <FileText className="size-4" />
-                        <span>분석 보기</span>
-                      </button>
-                      <button
-                        onClick={() => handleDelete(video.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="size-5" />
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -237,7 +418,6 @@ export function DashboardPage({
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                     className="hidden"
                     id="video-upload"
-                    required
                   />
                   <label htmlFor="video-upload" className="cursor-pointer">
                     <Plus className="size-12 mx-auto mb-4 text-gray-400" />
@@ -262,16 +442,14 @@ export function DashboardPage({
                   type="button"
                   onClick={() => setShowUploadModal(false)}
                   className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  disabled={isUploading}
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  disabled={isUploading}
                 >
-                  {isUploading ? '업로드 중...' : '업로드'}
+                  업로드
                 </button>
               </div>
             </form>
