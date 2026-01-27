@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react";
-import { LoginPage } from "./components/LoginPage";
+import { LoginForm } from "./components/LoginForm";
 import { OnboardingPage } from "./components/OnboardingPage2";
 import { DashboardPage } from "./components/DashboardPage";
 import { VideoPlayerPage } from "./components/VideoPlayerPage";
 import { AnalysisReportPage } from "./components/AnalysisReportPage";
 import { AccountPage } from "./components/AccountPage";
+import "../styles/index.css"
+import { LoginModal } from "./components/ui/LoginModal";
+import { AuthModal } from "./components/ui/AuthModal";
 
-type Page = "onboarding" | "login" | "dashboard" | "video" | "report" | "account";
+type Page = "onboarding" | "dashboard" | "video" | "report" | "account";
 
 function buildUrl(page: Page, videoId?: string | null) {
   switch (page) {
     case "onboarding":
       return "/";
-    case "login":
-      return "/login";
     case "dashboard":
       return "/dashboard";
     case "video":
@@ -29,16 +30,12 @@ function buildUrl(page: Page, videoId?: string | null) {
 
 function parseLocation(): { page: Page; videoId: string | null } {
   const parts = window.location.pathname.split("/").filter(Boolean);
-
-  // /  (no parts)
   if (parts.length === 0) return { page: "onboarding", videoId: null };
 
   const [first, second] = parts;
 
-  if (first === "login") return { page: "login", videoId: null };
   if (first === "dashboard") return { page: "dashboard", videoId: null };
   if (first === "account") return { page: "account", videoId: null };
-
   if (first === "video") return { page: "video", videoId: second ?? null };
   if (first === "report") return { page: "report", videoId: second ?? null };
 
@@ -49,6 +46,25 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("onboarding");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authInitialView, setAuthInitialView] = useState<"login" | "signup" | "forgot">("login");
+
+  const openLoginModal = () => {
+    setAuthInitialView("login");
+    setIsAuthOpen(true);
+  };
+
+const openSignupModal = () => {
+  setAuthInitialView("signup");
+  setIsAuthOpen(true);
+};
+
+const closeAuthModal = () => setIsAuthOpen(false);
+
+  // ✅ 로그인 모달 상태
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const openLogin = () => setIsLoginOpen(true);
+  const closeLogin = () => setIsLoginOpen(false);
 
   // ✅ URL -> state (새로고침/직접접속/뒤로가기 대응)
   useEffect(() => {
@@ -58,22 +74,27 @@ export default function App() {
       setSelectedVideoId(videoId);
     };
 
-    apply(); // 초기 진입 시 한번
+    apply();
     window.addEventListener("popstate", apply);
     return () => window.removeEventListener("popstate", apply);
   }, []);
 
-  // ✅ state -> URL (화면 전환 시 history 쌓기)
+  // ✅ state -> URL
   const go = (page: Page, videoId?: string | null) => {
     const url = buildUrl(page, videoId ?? selectedVideoId);
-    window.history.pushState({ page, videoId: videoId ?? selectedVideoId }, "", url);
-
+    window.history.pushState(
+      { page, videoId: videoId ?? selectedVideoId },
+      "",
+      url
+    );
     setCurrentPage(page);
     if (typeof videoId !== "undefined") setSelectedVideoId(videoId);
   };
 
-  const handleLogin = () => {
+  // ✅ 로그인 성공(모달에서 호출)
+  const handleLoginSuccess = () => {
     setIsLoggedIn(true);
+    closeLogin();
     go("dashboard", selectedVideoId);
   };
 
@@ -84,35 +105,44 @@ export default function App() {
   };
 
   const handleViewVideo = (videoId: string) => {
+    setSelectedVideoId(videoId);
     go("video", videoId);
   };
 
   const handleViewReport = (videoId: string) => {
+    setSelectedVideoId(videoId);
     go("report", videoId);
   };
 
-  const handleBackToDashboard = () => {
-    go("dashboard", selectedVideoId);
-  };
-
   const handleNavigate = (page: "dashboard" | "video" | "report" | "account") => {
-    // video/report는 선택된 video가 없으면 못 가게(기존 Header disabled와 동일한 논리)
     if ((page === "video" || page === "report") && !selectedVideoId) return;
     go(page, selectedVideoId);
   };
 
   const handleJumpToVideo = (time: number) => {
-    // 실제로는 video player seek 해야 하지만, 지금은 video 페이지로 이동만
+    // 실제론 video player seek가 좋지만, 지금은 video 페이지로 이동만
     go("video", selectedVideoId);
   };
 
-  return (
-    <div className="size-full">
-      {currentPage === "onboarding" && (
-        <OnboardingPage onGetStarted={() => go("login", null)} />
-      )}
+  // ✅ 로그인 필요한데 안 로그인했으면: 모달 열기(선택)
+  useEffect(() => {
+    if (!isLoggedIn && currentPage !== "onboarding") {
+      // 대시보드/리포트 같은 곳에 갔는데 로그인 안 되어있으면 모달 띄우고 온보딩으로
+      openLogin();
+      go("onboarding", null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn]);
 
-      {currentPage === "login" && <LoginPage onLogin={handleLogin} />}
+  return (
+    <>
+      {currentPage === "onboarding" && (
+        <OnboardingPage 
+        onGetStarted={openLogin}
+        onOpenLogin={openLoginModal}
+       onOpenSignup={openSignupModal}
+         />
+      )}
 
       {currentPage === "dashboard" && (
         <DashboardPage
@@ -127,7 +157,7 @@ export default function App() {
       {currentPage === "video" && selectedVideoId && (
         <VideoPlayerPage
           videoId={selectedVideoId}
-          onBack={() => window.history.back()} // ✅ “진짜 뒤로가기”
+          onBack={() => window.history.back()}
           onNavigate={handleNavigate}
           onLogout={handleLogout}
         />
@@ -136,7 +166,7 @@ export default function App() {
       {currentPage === "report" && selectedVideoId && (
         <AnalysisReportPage
           videoId={selectedVideoId}
-          onBack={() => window.history.back()} // ✅ “진짜 뒤로가기”
+          onBack={() => window.history.back()}
           onJumpToVideo={handleJumpToVideo}
           onNavigate={handleNavigate}
           onLogout={handleLogout}
@@ -150,6 +180,14 @@ export default function App() {
           hasSelectedVideo={!!selectedVideoId}
         />
       )}
-    </div>
+
+      {/* ✅ 로그인 모달은 항상 렌더링(조건부 표시만 open으로) */}
+     <AuthModal
+      open={isAuthOpen}
+      onClose={closeAuthModal}
+      onLoginSuccess={handleLoginSuccess}
+      initialView={authInitialView}
+/>
+    </>
   );
 }
