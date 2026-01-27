@@ -11,11 +11,15 @@ import {
 } from "lucide-react";
 import {useNavigate} from "react-router-dom";
 
+
 interface OnboardingPageProps {
   onGetStarted: () => void;
+  onOpenLogin: () => void;
+  onOpenSignup: () => void;
 }
 
-export function OnboardingPage({ onGetStarted }: OnboardingPageProps) {
+export function OnboardingPage({ onGetStarted, onOpenLogin, onOpenSignup }: OnboardingPageProps) {
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
@@ -63,13 +67,13 @@ export function OnboardingPage({ onGetStarted }: OnboardingPageProps) {
 
           <div className="flex items-center gap-4">
             <button
-              onClick={onGetStarted}
+              onClick={onOpenLogin}
               className="text-sm font-bold text-[#1a2b4c] px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
             >
-              로그인
+             로그인
             </button>
             <button
-              onClick={onGetStarted}
+              onClick={onOpenSignup}
               className="bg-[#1a2b4c] text-white text-sm font-bold px-6 py-2.5 rounded-full shadow-lg shadow-blue-900/10 hover:bg-[#0b1120] transition-all hover:scale-105 whitespace-nowrap"
             >
               시작하기
