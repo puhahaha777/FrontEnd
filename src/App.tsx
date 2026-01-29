@@ -94,7 +94,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
   // ✅ 로그인 성공(모달에서 호출)
   const handleLoginSuccess = () => {
     setIsLoggedIn(true);
-    closeLogin();
+    closeAuthModal();
     go("dashboard", selectedVideoId);
   };
 
