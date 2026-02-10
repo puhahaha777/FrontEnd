@@ -21,7 +21,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://13.125.8.150', // 백엔드 서버 IP
+        target: 'http://localhost:8080', // 백엔드 서버 IP
         changeOrigin: true,
         secure: false,
       },

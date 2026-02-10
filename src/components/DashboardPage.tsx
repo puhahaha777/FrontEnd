@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Header, type Page } from './Header';
 
-// ✅ [추가] API 응답용 인터페이스 정의
+// API 응답용 인터페이스 정의
 interface DashboardSummary {
   totalVideos: number;
   totalAnalysisTime: string;
@@ -70,75 +70,55 @@ export function DashboardPage({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [videoName, setVideoName] = useState('');
 
-  // 통계 상태 관리 (초기값: Mock 데이터)
-  const [stats, setStats] = useState<DashboardSummary>({
-    totalVideos: 3,
-    totalAnalysisTime: '2시간 16분',
-    averageScore: 85
-  });
+  // 통계 상태 관리
+  const [stats, setStats] = useState<DashboardSummary | null>(null);
 
-  // Mock data
+
+  // 영상 목록 상태 관리
   const [videos, setVideos] = useState<VideoRecord[]>([
-    {
-      id: '1',
-      name: '주말 복식 경기',
-      date: '2026-01-02',
-      duration: '45:23',
-      score: '21-18, 19-21, 21-16',
-      status: 'completed',
-    },
-    {
-      id: '2',
-      name: '연습 경기 - 스매시 집중',
-      date: '2025-12-28',
-      duration: '32:15',
-      score: '21-15, 21-12',
-      status: 'completed',
-    },
-    {
-      id: '3',
-      name: '클럽 대회 준결승',
-      date: '2025-12-20',
-      duration: '58:40',
-      score: '18-21, 21-19, 21-17',
-      status: 'completed',
-    },
   ]);
 
 // 대시보드 데이터 조회 API 호출
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        // 백엔드 API 호출
-        const response = await fetch('/api/v1/dashboard');
-        if (!response.ok) throw new Error('Failed to fetch');
-        
-        const json: DashboardResponse = await response.json();
-        const { dashboardSummary, recentVideos } = json.data;
+useEffect(() => {
+  const fetchDashboardData = async () => {
+    try {
+      // 백엔드 포트(8080) 명시 및 Authorization 헤더에 토큰 추가
+      const token = localStorage.getItem('access_token');
+      const response = await fetch('http://localhost:8080/api/v1/dashboard', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // 'Authorization': `Bearer ${token}`,
+          'Authorization': "Bearer eyJhbGciOiJIUzM4NCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcl9pZCI6MSwiZW1haWwiOiJleGFtcGxlQGVtYWlsLmNvbSIsImlhdCI6MTc3MDc0MTA3MCwiZXhwIjoxNzcwNzQ0NjcwfQ.C1i3lwtJ6iZSC9PT3P7z_1gYlF3bZOOXq5cSDJKutgcm8Wn39qWp25lvQntRMppi",
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch');
+      
+      const json: DashboardResponse = await response.json();
+      
+      // 상태 업데이트
+      setStats(json.data.dashboardSummary);
+      // 영상 목록 매핑
+      setVideos(json.data.recentVideos.map(v => ({
+        id: String(v.videoId),
+        name: v.title,
+        date: v.date,
+        duration: v.playTime,
+        score: v.matchScore,
+        thumbnail: v.thumbnailUrl,
+        status: 'completed',
+      })));
 
-        // 1. 통계 업데이트
-        setStats(dashboardSummary);
+    } catch (e) {
+      // 에러 처리
+      console.error(e);
+      setVideos([]);
+    }
+  };
 
-        // 2. 영상 리스트 매핑 및 업데이트
-        const mappedVideos: VideoRecord[] = recentVideos.map((v) => ({
-          id: String(v.videoId),
-          name: v.title,
-          date: v.date,
-          duration: v.playTime,
-          score: v.matchScore,
-          thumbnail: v.thumbnailUrl,
-          status: 'completed'
-        }));
-        setVideos(mappedVideos);
-
-      } catch (error) {
-        // 서버가 안 열려있거나 에러 발생 시 로그만 남기고 Mock 데이터 유지
-        console.log('Using mock data due to API error:', error);
-      }
-    };
-
-    fetchDashboardData();
-  }, []);
+  fetchDashboardData();
+}, []);
 
   const handleDelete = (id: string) => {
     if (confirm('이 영상을 삭제하시겠습니까?')) {
@@ -174,15 +154,19 @@ export function DashboardPage({
 
     // 3. 백그라운드에서 API 요청 진행
     try {
-      const formData = new FormData();
-      formData.append('video', uploadFile);
-      formData.append('title', videoName || uploadFile.name);
-
-      // 404 에러 수정: /api/v1/videos (복수형) -> /api/v1/video (단수형) 가능성 높음
-      // vite.config.ts의 proxy 설정이 /api를 rewrite 해주는지 확인 필요
-      const response = await fetch('/api/v1/video', { 
+      const token = localStorage.getItem('access_token');
+      const response = await fetch('http://localhost:8080/api/v1/videos', {
         method: 'POST',
-        body: formData,
+        headers: {
+          // 아직 영상 XML 업로드는 구현하지 않았으므로 JSON으로 메타데이터 전송
+          'Content-Type': 'application/json',
+          // 'Authorization': `Bearer ${token}`,
+          'Authorization': "Bearer eyJhbGciOiJIUzM4NCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcl9pZCI6MSwiZW1haWwiOiJleGFtcGxlQGVtYWlsLmNvbSIsImlhdCI6MTc3MDc0MTA3MCwiZXhwIjoxNzcwNzQ0NjcwfQ.C1i3lwtJ6iZSC9PT3P7z_1gYlF3bZOOXq5cSDJKutgcm8Wn39qWp25lvQntRMppi",
+        },
+        body: JSON.stringify({
+          title: videoName || uploadFile.name,
+          matchDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+        }),
       });
 
       if (!response.ok) {
@@ -255,6 +239,8 @@ export function DashboardPage({
         </div>
 
         {/* Stats */}
+        // 통계가 로드된 경우에만 표시
+        {stats && (
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="text-gray-600 mb-2">총 업로드 영상</div>
@@ -269,6 +255,7 @@ export function DashboardPage({
             <div className="text-3xl text-purple-600">{stats.averageScore}점</div>
           </div>
         </div>
+        )}
 
         {/* Video List */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
