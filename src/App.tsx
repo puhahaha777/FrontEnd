@@ -6,7 +6,7 @@ import { VideoPlayerPage } from "./components/VideoPlayerPage";
 import { AnalysisReportPage } from "./components/AnalysisReportPage";
 import { AccountPage } from "./components/AccountPage";
 import "../styles/index.css"
-import { LoginModal } from "./components/ui/LoginModal";
+// import { LoginModal } from "./components/ui/LoginModal";
 import { AuthModal } from "./components/ui/AuthModal";
 
 type Page = "onboarding" | "dashboard" | "video" | "report" | "account";
@@ -61,12 +61,20 @@ const openSignupModal = () => {
 
 const closeAuthModal = () => setIsAuthOpen(false);
 
-  // ✅ 로그인 모달 상태
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const openLogin = () => setIsLoginOpen(true);
-  const closeLogin = () => setIsLoginOpen(false);
+  // // 로그인 모달 상태
+  // const [isLoginOpen, setIsLoginOpen] = useState(false);
+  // const openLogin = () => setIsLoginOpen(true);
+  // const closeLogin = () => setIsLoginOpen(false);
 
-  // ✅ URL -> state (새로고침/직접접속/뒤로가기 대응)
+  // 페이지 처음 로드 시 토큰 있으면 로그인 유지
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  // URL -> state (새로고침/직접접속/뒤로가기 대응)
   useEffect(() => {
     const apply = () => {
       const { page, videoId } = parseLocation();
@@ -79,7 +87,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
     return () => window.removeEventListener("popstate", apply);
   }, []);
 
-  // ✅ state -> URL
+  //  state -> URL
   const go = (page: Page, videoId?: string | null) => {
     const url = buildUrl(page, videoId ?? selectedVideoId);
     window.history.pushState(
@@ -91,7 +99,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
     if (typeof videoId !== "undefined") setSelectedVideoId(videoId);
   };
 
-  // ✅ 로그인 성공(모달에서 호출)
+  // 로그인 성공(모달에서 호출)
   const handleLoginSuccess = () => {
     setIsLoggedIn(true);
     closeAuthModal();
@@ -99,6 +107,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
   };
 
   const handleLogout = () => {
+    localStorage.clear();   // 토큰 삭제
     setIsLoggedIn(false);
     setSelectedVideoId(null);
     go("onboarding", null);
@@ -124,21 +133,22 @@ const closeAuthModal = () => setIsAuthOpen(false);
     go("video", selectedVideoId);
   };
 
-  // ✅ 로그인 필요한데 안 로그인했으면: 모달 열기(선택)
+  //  로그인 필요한데 로그인 안했으면: 모달 열기(선택)
   useEffect(() => {
-    if (!isLoggedIn && currentPage !== "onboarding") {
+    const token = localStorage.getItem("accessToken");
+    
+    if (!token && currentPage !== "onboarding") {
       // 대시보드/리포트 같은 곳에 갔는데 로그인 안 되어있으면 모달 띄우고 온보딩으로
-      openLogin();
+      openLoginModal();
       go("onboarding", null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn]);
+  }, [currentPage]);
 
   return (
     <>
       {currentPage === "onboarding" && (
         <OnboardingPage 
-        onGetStarted={openLogin}
+        onGetStarted={openLoginModal}
         onOpenLogin={openLoginModal}
        onOpenSignup={openSignupModal}
          />
@@ -181,7 +191,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
         />
       )}
 
-      {/* ✅ 로그인 모달은 항상 렌더링(조건부 표시만 open으로) */}
+      {/* 로그인 모달은 항상 렌더링(조건부 표시만 open으로) */}
      <AuthModal
       open={isAuthOpen}
       onClose={closeAuthModal}
