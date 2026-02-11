@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 type Props = {
-  onLogin: () => void;
+  onLogin: (email: string, password: string) => void;
   onGoSignup: () => void;
   onGoForgot: () => void;
 };
@@ -11,9 +11,16 @@ export function LoginForm({ onLogin, onGoSignup, onGoForgot }: Props) {
   const [password, setPassword] = useState("");
   const [keepSignedIn, setKeepSignedIn] = useState(false);
 
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin();
+
+    if (!email || !password) { // 입력 안할 시
+      alert("이메일과 비밀번호를 입력해주세요.");
+      return;
+    }
+
+    onLogin(email, password); // email, password 전달
   };
 
   return (

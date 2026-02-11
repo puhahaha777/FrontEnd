@@ -40,6 +40,37 @@ export function AuthModal({ open, onClose, onLoginSuccess, initialView= "login" 
     };
   }, [open, onClose]);
 
+const handleLogin = async (email: string, password: string) => {
+  try {
+    const res = await fetch("http://localhost:8080/api/v1/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      throw new Error(result.message || "로그인 실패");
+    }
+
+    // 🔥 백엔드 구조 주의 (data 안에 있음)
+    const { accessToken, refreshToken, user } = result.data;
+
+    localStorage.setItem("accessToken", accessToken);
+    localStorage.setItem("refreshToken", refreshToken);
+    localStorage.setItem("user", JSON.stringify(user));
+
+    onLoginSuccess(); // App.tsx에서 dashboard 이동
+
+  } catch (error: any) {
+    alert(error.message);
+  }
+};
+
+
   if (!open) return null;
 
   return (
@@ -59,7 +90,7 @@ export function AuthModal({ open, onClose, onLoginSuccess, initialView= "login" 
           <div className="p-6">
             {view === "login" && (
               <LoginForm
-                onLogin={onLoginSuccess}
+                onLogin={handleLogin}
                 onGoSignup={() => setView("signup")}
                 onGoForgot={() => setView("forgot")}
               />
