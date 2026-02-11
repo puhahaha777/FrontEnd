@@ -89,7 +89,7 @@ useEffect(() => {
         headers: {
           'Content-Type': 'application/json',
           // 'Authorization': `Bearer ${token}`,
-          'Authorization': "Bearer eyJhbGciOiJIUzM4NCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcl9pZCI6MSwiZW1haWwiOiJleGFtcGxlQGVtYWlsLmNvbSIsImlhdCI6MTc3MDc0MTA3MCwiZXhwIjoxNzcwNzQ0NjcwfQ.C1i3lwtJ6iZSC9PT3P7z_1gYlF3bZOOXq5cSDJKutgcm8Wn39qWp25lvQntRMppi",
+          'Authorization': `Bearer ${token}`,
         }
       });
       
@@ -161,7 +161,7 @@ useEffect(() => {
           // 아직 영상 XML 업로드는 구현하지 않았으므로 JSON으로 메타데이터 전송
           'Content-Type': 'application/json',
           // 'Authorization': `Bearer ${token}`,
-          'Authorization': "Bearer eyJhbGciOiJIUzM4NCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcl9pZCI6MSwiZW1haWwiOiJleGFtcGxlQGVtYWlsLmNvbSIsImlhdCI6MTc3MDc0MTA3MCwiZXhwIjoxNzcwNzQ0NjcwfQ.C1i3lwtJ6iZSC9PT3P7z_1gYlF3bZOOXq5cSDJKutgcm8Wn39qWp25lvQntRMppi",
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           title: videoName || uploadFile.name,
@@ -239,7 +239,6 @@ useEffect(() => {
         </div>
 
         {/* Stats */}
-        // 통계가 로드된 경우에만 표시
         {stats && (
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-xl p-6 shadow-sm">
