@@ -29,7 +29,7 @@ import { Header, type Page } from "./Header";
 
 // ✅ 
 import { fetchReport } from "../api/reportpageApi";
-import type { ReportResponse } from "../types/reportpageApi";
+import type { ReportResponse } from "../types/reportpageType";
 
 interface AnalysisReportPageProps {
   videoId: string;
