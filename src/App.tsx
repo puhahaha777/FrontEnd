@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { LoginForm } from "./components/LoginForm";
-import { OnboardingPage } from "./components/OnboardingPage2";
+import { OnboardingPage } from "./components/OnboardingPage";
 import { DashboardPage } from "./components/DashboardPage";
 import { VideoPlayerPage } from "./components/VideoPlayerPage";
 import { AnalysisReportPage } from "./components/AnalysisReportPage";
