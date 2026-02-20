@@ -83,12 +83,11 @@ useEffect(() => {
   const fetchDashboardData = async () => {
     try {
       // 백엔드 포트(8080) 명시 및 Authorization 헤더에 토큰 추가
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('http://localhost:8080/api/v1/dashboard', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${token}`,
           'Authorization': `Bearer ${token}`,
         }
       });
@@ -154,7 +153,7 @@ useEffect(() => {
 
     // 3. 백그라운드에서 API 요청 진행
     try {
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch('http://localhost:8080/api/v1/videos', {
         method: 'POST',
         headers: {
