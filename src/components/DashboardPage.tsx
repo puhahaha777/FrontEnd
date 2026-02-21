@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import {
   Upload,
@@ -10,35 +11,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Header, type Page } from './Header';
-
-// API 응답용 인터페이스 정의
-interface DashboardSummary {
-  totalVideos: number;
-  totalAnalysisTime: string;
-  averageScore: number;
-}
-
-interface ApiVideoItem {
-  videoId: number;
-  title: string;
-  date: string;
-  playTime: string;
-  matchScore: string;
-  thumbnailUrl: string;
-  actions: {
-    viewVideoUrl: string;
-    viewAnalysisUrl: string;
-  };
-}
-
-interface DashboardResponse {
-  code: number;
-  message: string;
-  data: {
-    dashboardSummary: DashboardSummary;
-    recentVideos: ApiVideoItem[];
-  };
-}
+import { fetchDashboard, DashboardResponse } from '../api/dashboardApi';
 
 interface VideoRecord {
   id: string;
@@ -59,6 +32,7 @@ interface DashboardPageProps {
   hasSelectedVideo: boolean;
 }
 
+
 export function DashboardPage({
   onLogout,
   onViewVideo,
@@ -71,53 +45,40 @@ export function DashboardPage({
   const [videoName, setVideoName] = useState('');
 
   // 통계 상태 관리
-  const [stats, setStats] = useState<DashboardSummary | null>(null);
-
-
+  const [stats, setStats] = useState<DashboardResponse['data']['dashboardSummary'] | null>(null);
   // 영상 목록 상태 관리
-  const [videos, setVideos] = useState<VideoRecord[]>([
-  ]);
+  const [videos, setVideos] = useState<{
+    id: string;
+    name: string;
+    date: string;
+    duration: string;
+    score?: string;
+    thumbnail?: string;
+    status?: 'uploading' | 'processing' | 'completed' | 'error';
+  }[]>([]);
 
-// 대시보드 데이터 조회 API 호출
-useEffect(() => {
-  const fetchDashboardData = async () => {
-    try {
-      // 백엔드 포트(8080) 명시 및 Authorization 헤더에 토큰 추가
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:8080/api/v1/dashboard', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch');
-      
-      const json: DashboardResponse = await response.json();
-      
-      // 상태 업데이트
-      setStats(json.data.dashboardSummary);
-      // 영상 목록 매핑
-      setVideos(json.data.recentVideos.map(v => ({
-        id: String(v.videoId),
-        name: v.title,
-        date: v.date,
-        duration: v.playTime,
-        score: v.matchScore,
-        thumbnail: v.thumbnailUrl,
-        status: 'completed',
-      })));
-
-    } catch (e) {
-      // 에러 처리
-      console.error(e);
-      setVideos([]);
-    }
-  };
-
-  fetchDashboardData();
-}, []);
+  // 대시보드 데이터 조회 API 호출
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const json = await fetchDashboard();
+        setStats(json.data.dashboardSummary);
+        setVideos(json.data.recentVideos.map(v => ({
+          id: String(v.videoId),
+          name: v.title,
+          date: v.date,
+          duration: v.playTime,
+          score: v.matchScore,
+          thumbnail: v.thumbnailUrl,
+          status: 'completed',
+        })));
+      } catch (e) {
+        console.error(e);
+        setVideos([]);
+      }
+    };
+    fetchDashboardData();
+  }, []);
 
   const handleDelete = (id: string) => {
     if (confirm('이 영상을 삭제하시겠습니까?')) {
