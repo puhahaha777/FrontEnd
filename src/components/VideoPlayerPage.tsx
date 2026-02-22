@@ -62,7 +62,8 @@ export function VideoPlayerPage({
     { id: 2, text: "백핸드 드라이브 보완", completed: true },
     { id: 3, text: "풋워크 속도 체크", completed: false },
   ]);
-  const videoRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   // API-driven states
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null);
@@ -70,17 +71,48 @@ export function VideoPlayerPage({
     ApiTimelineEvent[]
   >([]);
 
-  const duration = videoInfo?.duration ?? 2723; // fallback
+  const [duration, setDuration] = useState(0); // 비디오 총 길이 (초 단위)
+
+  // API 데이터가 로드되면 duration 초기값 설정 (useEffect 안에 추가)
+  useEffect(() => {
+    if (videoInfo?.duration) {
+      // API에서 초 단위(Seconds)로 준다면 그대로 사용
+      // 만약 밀리초(ms)라면 videoInfo.duration / 1000 해야 함 (보통은 초 단위)
+      setDuration(videoInfo.duration);
+    }
+  }, [videoInfo]);
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+    if (!seconds || isNaN(seconds)) return "00:00"; // 값이 없거나 NaN이면 00:00 반환
+
+    const totalSeconds = Math.floor(seconds); // 소수점 버림
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+
+    // 00:00 형식으로 변환 (한 자리수일 때 앞에 0 붙임)
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // 타임라인 이벤트 클릭 시 해당 시간으로 점프하는 로직
   const handleJumpTo = (time: number) => {
     setCurrentTime(time);
-    // 실제 비디오 플레이어가 있다면, 해당 시간으로 점프하는 로직 필요 (예: videoRef.current?.seek(time))
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      videoRef.current.play(); // 이동 후 바로 재생 (선택 사항)
+      setIsPlaying(true);
+    }
+  };
+
+  // 하단 컨트롤러의 재생/일시정지 버튼 작동 로직
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
   };
 
   // 카테고리 매핑 함수
@@ -207,10 +239,7 @@ export function VideoPlayerPage({
           <div className="lg:col-span-2 space-y-6">
             {/* Video */}
             <div className="bg-black rounded-xl overflow-hidden aspect-video shadow-lg relative">
-              <div
-                ref={videoRef}
-                className="w-full h-full flex items-center justify-center"
-              >
+              <div className="w-full h-full flex items-center justify-center">
                 {" "}
                 {/* 실제 비디오 플레이어 컴포넌트로 대체 필요 (예: <video> 태그 또는 서드파티 라이브러리) */}
                 {/* Video Overlay */}
@@ -225,14 +254,30 @@ export function VideoPlayerPage({
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center relative">
-                    <div className="absolute inset-0 opacity-20 pointer-events-none">
-                      <div className="w-full h-full bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1)_0%,transparent_70%)]" />
-                    </div>
-                    <Play className="size-20 text-white/50" />
+                  <>
+                    {/* 1. 실제 비디오 태그 추가 */}
+                    <video
+                      ref={(el) => {
+                        if (el) (videoRef as any).current = el;
+                      }}
+                      src={videoInfo?.videoUrl}
+                      className="w-full h-full object-contain bg-black"
+                      onTimeUpdate={(e) =>
+                        setCurrentTime(e.currentTarget.currentTime)
+                      }
+                      // 2. 영상 메타데이터 로드 시 duration 업데이트 (API 값이 없을 때 대비)
+                      onLoadedMetadata={(e) => {
+                        if (!videoInfo?.duration) {
+                          setDuration(e.currentTarget.duration);
+                        }
+                      }}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                      onClick={togglePlay} // 화면 클릭 시 재생/일시정지
+                    />
 
-                    {/* Score Overlay */}
-                    <div className="absolute top-6 left-6 flex items-center gap-4 bg-black/40 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 text-white">
+                    {/* 2. Score Overlay (비디오 위에 띄움) */}
+                    <div className="absolute top-6 left-6 flex items-center gap-4 bg-black/40 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 text-white pointer-events-none">
                       <div className="text-center">
                         <div className="text-[10px] opacity-60 uppercase tracking-widest">
                           Team A
@@ -247,7 +292,17 @@ export function VideoPlayerPage({
                         <div className="text-xl leading-none">{scoreRight}</div>
                       </div>
                     </div>
-                  </div>
+
+                    {/* 3. 중앙 재생 버튼 (일시정지 상태일 때만 보임) */}
+                    {!isPlaying && !isLoading && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center bg-black/10 cursor-pointer"
+                        onClick={togglePlay}
+                      >
+                        <Play className="size-20 text-white/50 hover:text-white/80 transition-colors" />
+                      </div>
+                    )}
+                  </>
                 )}
                 {/* Heatmap overlay */}
                 {showHeatmap && !isLoading && (
@@ -323,7 +378,7 @@ export function VideoPlayerPage({
                     <SkipBack className="size-6" />
                   </button>
                   <button
-                    onClick={() => setIsPlaying(!isPlaying)}
+                    onClick={togglePlay} // 재생/일시정지 토글
                     className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
                   >
                     {isPlaying ? (
