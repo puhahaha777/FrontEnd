@@ -1,16 +1,12 @@
-import { useState, useEffect } from "react";
-import {
-  Upload,
-  Play,
-  FileText,
-  Trash2,
-  Plus,
-  X,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Upload, Plus, X } from "lucide-react";
 import { Header, type Page } from "./Header";
-import { fetchDashboard, DashboardResponse } from "../api/dashboardApi";
+import {
+  fetchDashboard,
+  deleteVideo,
+  DashboardResponse,
+} from "../api/dashboardApi";
+import { VideoItem } from "../components/VideoItem"; // 분리한 컴포넌트 import
 
 interface VideoRecord {
   id: string;
@@ -47,42 +43,35 @@ export function DashboardPage({
     DashboardResponse["data"]["dashboardSummary"] | null
   >(null);
   // 영상 목록 상태 관리
-  const [videos, setVideos] = useState<
-    {
-      id: string;
-      name: string;
-      date: string;
-      duration: string;
-      score?: string;
-      thumbnail?: string;
-      status?: "uploading" | "processing" | "completed" | "error";
-    }[]
-  >([]);
+  const [videos, setVideos] = useState<any[]>([]); // 타입은 위에서 정의한 VideoRecord 배열 사용
 
-  // 대시보드 데이터 조회 API 호출
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const json = await fetchDashboard();
-        setStats(json.data.dashboardSummary);
-        setVideos(
-          json.data.recentVideos.map((v) => ({
-            id: String(v.videoId),
-            name: v.title,
-            date: v.date,
-            duration: v.playTime || "00:00",
-            score: v.matchScore,
-            thumbnail: v.thumbnailUrl,
-            status: v.playTime === "분석 중" ? "processing" : "completed",
-          })),
-        );
-      } catch (e) {
-        console.error(e);
-        setVideos([]);
-      }
-    };
-    fetchDashboardData();
+  // 데이터 호출 로직을 재사용 가능한 함수로 분리
+  const fetchData = useCallback(async () => {
+    try {
+      const json = await fetchDashboard();
+      setStats(json.data.dashboardSummary);
+
+      // API에서 받아온 데이터를 VideoRecord 형태로 매핑하여 상태에 저장
+      setVideos(
+        json.data.recentVideos.map((v) => ({
+          id: String(v.videoId),
+          name: v.title,
+          date: v.date,
+          duration: v.playTime || "00:00",
+          score: v.matchScore,
+          thumbnail: v.thumbnailUrl,
+          status: v.playTime === "분석 중" ? "processing" : "completed",
+        })),
+      );
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
+
+  // 초기 로드
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // 분석 중인 영상이 있는지 확인
   const hasProcessingVideo = videos.some(
@@ -94,34 +83,35 @@ export function DashboardPage({
 
     if (hasProcessingVideo) {
       // 5초마다 대시보드 데이터를 다시 불러옴
-      interval = setInterval(async () => {
-        try {
-          const json = await fetchDashboard();
-          setVideos(
-            json.data.recentVideos.map((v) => ({
-              id: String(v.videoId),
-              name: v.title,
-              date: v.date,
-              duration: v.playTime,
-              score: v.matchScore,
-              thumbnail: v.thumbnailUrl,
-              // DB의 상태값을 보고 완료 여부 결정 (예: status 필드가 따로 있다면 활용)
-              status: v.playTime !== "분석 중" ? "completed" : "processing",
-            })),
-          );
-        } catch (e) {
-          console.error("상태 갱신 실패:", e);
-        }
-      }, 5000); // 5초 간격
+      interval = setInterval(fetchData, 5000); // fetchData 재사용
+    }
+    return () => clearInterval(interval);
+  }, [hasProcessingVideo, fetchData]);
+
+  // 영상 삭제 핸들러 API (임시)
+  const handleDelete = async (id: string) => {
+    // 임시 업로드 중인 파일 삭제 처리
+    if (id.startsWith("temp-")) {
+      setVideos((prev) => prev.filter((v) => v.id !== id));
+      return;
     }
 
-    return () => clearInterval(interval); // 컴포넌트 언마운트 시 인터벌 제거
-  }, [hasProcessingVideo]);
-
-  const handleDelete = (id: string) => {
     if (confirm("이 영상을 삭제하시겠습니까?")) {
-      // API 연동 시 삭제 API 호출 필요 (예: await fetch(`/api/videos/${id}`, { method: 'DELETE' }))
-      setVideos(videos.filter((v) => v.id !== id));
+      try {
+        await deleteVideo(id); // API 호출
+        setVideos((prev) => prev.filter((v) => v.id !== id)); // 상태 업데이트
+
+        // 통계 업데이트 (선택 사항)
+        if (stats) {
+          setStats({
+            ...stats,
+            totalVideos: Math.max(0, stats.totalVideos - 1),
+          });
+        }
+      } catch (e) {
+        alert("삭제 중 오류가 발생했습니다.");
+        console.error(e);
+      }
     }
   };
 
@@ -178,7 +168,7 @@ export function DashboardPage({
 
       const newVideoData = await response.json();
 
-      // 4-1. 통계 카운트 즉시 업데이트
+      // 통계 카운트 즉시 업데이트
       if (stats) {
         setStats({
           ...stats,
@@ -274,144 +264,18 @@ export function DashboardPage({
             <div className="p-12 text-center text-gray-500">
               <Upload className="size-12 mx-auto mb-4 text-gray-400" />
               <p>업로드된 영상이 없습니다</p>
-              <p className="text-sm mt-2">첫 영상을 업로드해보세요!</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
-              {videos.map((video) => {
-                // 상태별 변수 정의
-                const isUploading = video.status === "uploading";
-                const isProcessing =
-                  video.status === "processing" || video.duration === "분석 중";
-                const isError = video.status === "error";
-                const isReady = video.status === "completed" || !video.status; // status가 없으면 완료된 것으로 간주
-
-                return (
-                  <div
-                    key={video.id}
-                    className="p-6 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-6">
-                      {/* 상태에 따라 로딩 스피너 또는 에러 아이콘 표시 */}
-                      <div
-                        className={`w-32 h-20 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          isProcessing
-                            ? "bg-indigo-50"
-                            : isUploading
-                              ? "bg-blue-50"
-                              : isError
-                                ? "bg-red-50"
-                                : "bg-gray-100"
-                        }`}
-                      >
-                        {isUploading ? (
-                          <Loader2 className="size-8 text-blue-500 animate-spin" />
-                        ) : isProcessing ? (
-                          <div className="relative">
-                            <Loader2 className="size-8 text-indigo-500 animate-spin" />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="size-2 bg-indigo-500 rounded-full animate-pulse" />
-                            </div>
-                          </div>
-                        ) : isError ? (
-                          <AlertCircle className="size-8 text-red-500" />
-                        ) : (
-                          <Play className="size-8 text-blue-600" />
-                        )}
-                      </div>
-
-                      <div className="flex-1">
-                        <h3 className="text-xl mb-2 flex items-center gap-2">
-                          {video.name}
-                          {isUploading && (
-                            <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse">
-                              업로드 중...
-                            </span>
-                          )}
-                          {isProcessing && (
-                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                              분석 중...
-                            </span>
-                          )}
-                          {isError && (
-                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                              실패
-                            </span>
-                          )}
-                        </h3>
-                        <div className="flex items-center gap-6 text-sm text-gray-500">
-                          <span>{video.date}</span>
-                          {isProcessing ? (
-                            <span className="flex items-center gap-1.5 text-indigo-600 font-medium">
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                              </span>
-                              배드민턴 영상 분석 중
-                            </span>
-                          ) : (
-                            <span>{video.duration}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* 버튼 활성화/비활성화 및 로딩 상태 표시 */}
-                        <button
-                          onClick={() => isReady && onViewVideo(video.id)}
-                          disabled={!isReady}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                            isReady
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                          }`}
-                        >
-                          {isUploading ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Play className="size-4" />
-                          )}
-                          <span>{isUploading ? "처리 중" : "영상 보기"}</span>
-                        </button>
-
-                        <button
-                          onClick={() => isReady && onViewReport(video.id)}
-                          disabled={!isReady}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                            isReady
-                              ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                          }`}
-                        >
-                          {isUploading ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <FileText className="size-4" />
-                          )}
-                          <span>{isUploading ? "처리 중" : "분석 보기"}</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleDelete(video.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="size-5" />
-                        </button>
-                      </div>
-
-                      {/* isProcessing일 때만 */}
-                      {isProcessing && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-50 overflow-hidden">
-                          <div
-                            className="h-full bg-indigo-500 w-1/3 rounded-full animate-bounce"
-                            style={{ animationDuration: "3s" }}
-                          ></div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {videos.map((video) => (
+                <VideoItem
+                  key={video.id}
+                  video={video}
+                  onViewVideo={onViewVideo}
+                  onViewReport={onViewReport}
+                  onDelete={handleDelete}
+                />
+              ))}
             </div>
           )}
         </div>
