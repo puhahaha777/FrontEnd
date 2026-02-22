@@ -6,6 +6,8 @@ import {
   ScatterChart as ScatterIcon,
   Target,
   Zap,
+  Send,
+  User
 } from "lucide-react";
 import {
   RadarChart,
@@ -25,7 +27,20 @@ import {
 } from "recharts";
 
 import { Header, type Page } from "./Header";
+import {GoogleGenerativeAI} from "@google/generative-ai";
 
+const API_KEY = "AIzaSyA6eO9IN0JJfXujjLKTVhCCAlnbGRmhT9w";
+
+const genAI = new GoogleGenerativeAI("API_KEY");
+
+async function main() {
+  // 1. 모델 인스턴스 생성
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+// 2. 해당 모델에서 호출
+const result = await model.generateContent("Explain how AI works in a few words");
+console.log(result.response.text());
+}
 
 // API에서 받아오는 데이터 형태에 맞춰 타입 정의
 import { fetchReport } from "../api/reportpageApi";
@@ -59,6 +74,10 @@ export function AnalysisReportPage({
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [chatInput, setChatInput] = useState("");
+  const [chatHistory, setChatHistory] = useState<{role: string, parts: string}[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -233,6 +252,54 @@ export function AnalysisReportPage({
       </div>
     );
   }
+
+  //gemini 연동
+  const handleSendMessage = async () => {
+  if (!chatInput.trim() || !report) return;
+
+  const userMessage = chatInput;
+  setChatInput("");
+  // 1. UI에 사용자 메시지 즉시 추가
+  const updatedHistory = [...chatHistory, { role: "user", parts: userMessage }];
+  setChatHistory(updatedHistory);
+  setIsChatLoading(true);
+
+  try {
+    // 2. Gemini에게 전달할 리포트 데이터 요약 (컨텍스트)
+    const context = `
+      당신은 전문 배드민턴 코치입니다. 다음은 사용자의 경기 분석 데이터입니다:
+      - 결과: ${report.data.summary.matchOutcome} (${report.data.summary.myScore} 대 ${report.data.summary.opponentScore})
+      - 총 스트로크: ${report.data.summary.totalStrokeCount}회
+      - 능력치: 스매시(${report.data.abilityMetrics.smash}), 수비(${report.data.abilityMetrics.defense}), 정확도(${report.data.abilityMetrics.accuracy})
+      - 코치 피드백 요약: ${report.data.aiCoaching.feedbackText}
+      
+      사용자의 질문에 대해 이 데이터를 바탕으로 친절하고 전문적으로 답변해주세요.
+    `;
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const chat = model.startChat({
+      history: [
+        { role: "user", parts: [{ text: context }] },
+        { role: "model", parts: [{ text: "준비되었습니다!" }] },
+        ...chatHistory.map(h => ({
+          role: h.role === "user" ? "user" : "model",
+          parts: [{ text: h.parts }]
+        }))
+      ],
+    });
+
+    const result = await chat.sendMessage(userMessage);
+    const responseText = result.response.text();
+
+    setChatHistory([...updatedHistory, { role: "model", parts: responseText }]);
+  } catch (error) {
+    console.error("Gemini Error:", error);
+    setChatHistory([...updatedHistory, { role: "model", parts: "죄송합니다. 답변을 생성하는 중에 오류가 발생했습니다." }]);
+  } finally {
+    setIsChatLoading(false);
+  }
+};
+
 
   const summary = ui.summary;
 
@@ -448,23 +515,49 @@ export function AnalysisReportPage({
           </div>
         </div>
 
-        {/* AI Coach Analysis */}
-        <div className="bg-[#eff6ff] rounded-2xl p-10 border border-blue-100 shadow-sm mb-6">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <Bot className="size-6 text-white" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 tracking-tight">AI 코치 분석</h2>
-          </div>
+       {/* AI 챗봇 섹션 */}
+<div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg mb-6">
+  <div className="flex items-center gap-2 mb-4">
+    <Bot className="size-5 text-blue-600" />
+    <h3 className="font-bold text-gray-800">AI 코치와 대화하기</h3>
+  </div>
 
-          {/* 현재 API는 feedbackText만 있으니 그대로 출력 */}
-          <div className="bg-white rounded-xl border border-blue-100 p-6">
-            <div className="text-sm font-bold text-blue-700 mb-2">피드백</div>
-            <p className="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-line">
-              {ui.feedbackText || "AI 코칭 피드백이 아직 없습니다."}
-            </p>
-          </div>
+  {/* 채팅 메세지 창 */}
+  <div className="h-64 overflow-y-auto mb-4 space-y-3 p-4 bg-gray-50 rounded-xl">
+    {chatHistory.length === 0 && (
+      <p className="text-xs text-gray-400 text-center mt-10">경기에 대해 궁금한 점을 물어보세요!<br/>(예: "제 스매시 타이밍은 어땠나요?")</p>
+    )}
+    {chatHistory.map((chat, idx) => (
+      <div key={idx} className={`flex ${chat.role === "user" ? "justify-end" : "justify-start"}`}>
+        <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+          chat.role === "user" ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-800"
+        }`}>
+          {chat.parts}
         </div>
+      </div>
+    ))}
+    {isChatLoading && <div className="text-xs text-blue-500 animate-pulse">Gemini 코치가 생각 중...</div>}
+  </div>
+
+  {/* 입력창 */}
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={chatInput}
+      onChange={(e) => setChatInput(e.target.value)}
+      onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+      placeholder="질문을 입력하세요..."
+      className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+    <button
+      onClick={handleSendMessage}
+      disabled={isChatLoading}
+      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+    >
+      <Send className="size-5" />
+    </button>
+  </div>
+</div>
 
         {/* Match Summary */}
         <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
