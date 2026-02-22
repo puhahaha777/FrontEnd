@@ -70,10 +70,10 @@ export function DashboardPage({
             id: String(v.videoId),
             name: v.title,
             date: v.date,
-            duration: v.playTime,
+            duration: v.playTime || "00:00",
             score: v.matchScore,
             thumbnail: v.thumbnailUrl,
-            status: "completed",
+            status: v.playTime === "분석 중" ? "processing" : "completed",
           })),
         );
       } catch (e) {
