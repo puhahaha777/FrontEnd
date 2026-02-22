@@ -178,6 +178,14 @@ export function DashboardPage({
 
       const newVideoData = await response.json();
 
+      // 4-1. 통계 카운트 즉시 업데이트
+      if (stats) {
+        setStats({
+          ...stats,
+          totalVideos: stats.totalVideos + 1,
+        });
+      }
+
       // 4. 업로드 성공 시: 임시 데이터를 실제 서버 데이터로 교체
       setVideos((prevVideos) =>
         prevVideos.map((video) =>
