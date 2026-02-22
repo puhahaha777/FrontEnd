@@ -109,8 +109,17 @@ export function DashboardPage({
     
     // 2. 모달 즉시 닫기 및 초기화
     setShowUploadModal(false);
-    setUploadFile(null);
-    setVideoName('');
+    
+    // 2. FormData 객체 생성 (파일 + 메타데이터)
+    const formData = new FormData();
+    
+    // 백엔드 @RequestPart("videoFile") 또는 파라미터명과 일치해야 함
+    formData.append('videoFile', uploadFile); 
+    
+    // 쿼리 파라미터로 받을 경우 URL 뒤에 붙이고, 
+    // 만약 파라미터로 받는다면 아래처럼 append
+    formData.append('title', videoName || uploadFile.name);
+    formData.append('matchDate', new Date().toISOString().split('T')[0]);
 
     // 3. 백그라운드에서 API 요청 진행
     try {
@@ -118,15 +127,11 @@ export function DashboardPage({
       const response = await fetch('http://localhost:8080/api/v1/videos', {
         method: 'POST',
         headers: {
-          // 아직 영상 XML 업로드는 구현하지 않았으므로 JSON으로 메타데이터 전송
-          'Content-Type': 'application/json',
+          // FormData를 사용할 때는 'Content-Type' 헤더를 명시적으로 설정하지 않아야 함
           // 'Authorization': `Bearer ${token}`,
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          title: videoName || uploadFile.name,
-          matchDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -137,39 +142,27 @@ export function DashboardPage({
 
       // 4. 업로드 성공 시: 임시 데이터를 실제 서버 데이터로 교체
       setVideos((prevVideos) => 
-        prevVideos.map((video) => {
-          if (video.id === tempId) {
-            return {
-              ...video,
-              id: newVideoData.id || tempId,
-              name: newVideoData.title || video.name,
-              date: newVideoData.date || video.date,
-              duration: '분석 완료', // 분석이 완료되었다고 가정
-              status: 'completed',
-            };
-          }
-          return video;
-        })
+        prevVideos.map((video) => 
+          video.id === tempId ? {
+            ...video,
+            id: String(newVideoData.videoId),
+            name: newVideoData.title,
+            duration: '분석 중', 
+            status: 'processing', // 분석 서버 호출 단계이므로 '처리 중'이 적절함
+          } : video
+        )
       );
 
     } catch (error) {
       console.error('Upload Error:', error);
       // 5. 실패 시: 상태를 error로 변경하여 UI에 표시
       setVideos((prevVideos) => 
-        prevVideos.map((video) => {
-          if (video.id === tempId) {
-            return {
-              ...video,
-              duration: '업로드 실패',
-              status: 'error',
-            };
-          }
-          return video;
-        })
+        prevVideos.map((video) => 
+          video.id === tempId ? { ...video, duration: '업로드 실패', status: 'error' } : video
+        )
       );
       alert('영상 업로드 중 오류가 발생했습니다.');
     } 
-    // finally 블록 삭제 (백그라운드 처리이므로 불필요)
   };
 
   return (
