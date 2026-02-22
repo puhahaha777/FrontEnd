@@ -25,7 +25,23 @@ import {
 } from "recharts";
 
 import { Header, type Page } from "./Header";
+import {GoogleGenerativeAI} from "@google/generative-ai";
 
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+
+if (!API_KEY) {
+  console.error("VITE_GEMINI_API_KEY is missing. Check .env.local and restart dev server.");
+}
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+async function main() {
+  // 1. 모델 인스턴스 생성
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+// 2. 해당 모델에서 호출
+const result = await model.generateContent("Explain how AI works in a few words");
+console.log(result.response.text());
+}
 
 // API에서 받아오는 데이터 형태에 맞춰 타입 정의
 import { fetchReport } from "../api/reportpageApi";
