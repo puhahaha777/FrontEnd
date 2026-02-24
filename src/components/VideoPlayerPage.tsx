@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Play,
   Pause,
@@ -64,6 +64,16 @@ export function VideoPlayerPage({
   ]);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // 재생바 드래그 관련 상태 및 Ref 추가
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [wasPlaying, setWasPlaying] = useState(false);
+
+  // 재생바 hover 시간 툴팁 관련 상태 추가
+  const [hoverTime, setHoverTime] = useState(0);
+  const [hoverPosition, setHoverPosition] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
+
   // API-driven states
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null);
@@ -98,10 +108,110 @@ export function VideoPlayerPage({
     setCurrentTime(time);
     if (videoRef.current) {
       videoRef.current.currentTime = time;
-      videoRef.current.play(); // 이동 후 바로 재생 (선택 사항)
+      videoRef.current.play().catch(() => {}); // 이동 후 바로 재생 (선택 사항)
       setIsPlaying(true);
     }
   };
+
+  // 마우스 X 좌표를 영상 시간으로 변환하는 헬퍼 함수
+  const calculateTimeFromMouse = useCallback(
+    (clientX: number) => {
+      if (!progressBarRef.current || !duration) return 0;
+      const rect = progressBarRef.current.getBoundingClientRect();
+      const clickX = clientX - rect.left;
+      const percentage = Math.max(0, Math.min(clickX / rect.width, 1));
+      return percentage * duration;
+    },
+    [duration],
+  );
+
+  // 재생바에 마우스를 올렸을 때 툴팁 위치와 시간 계산
+  const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current || !duration) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const hoverX = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(hoverX / rect.width, 1));
+
+    setHoverPosition(percentage * 100);
+    setHoverTime(percentage * duration);
+  };
+
+  const handleMouseEnter = () => setIsHovering(true);
+  const handleMouseLeave = () => setIsHovering(false);
+
+  // 재생바 클릭 및 드래그 시작 시점
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    setIsDragging(true);
+    setWasPlaying(isPlaying);
+
+    if (videoRef.current) {
+      videoRef.current.pause(); // 드래그 중 부드러운 이동을 위해 영상 일시정지
+      setIsPlaying(false);
+    }
+
+    const newTime = calculateTimeFromMouse(e.clientX);
+    setCurrentTime(newTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+
+    // 클릭 즉시 툴팁 위치 동기화
+    if (progressBarRef.current && duration) {
+      const rect = progressBarRef.current.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const percentage = Math.max(0, Math.min(clickX / rect.width, 1));
+      setHoverPosition(percentage * 100);
+      setHoverTime(percentage * duration);
+    }
+  };
+
+  // 드래그 중일 때 처리
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return;
+      const newTime = calculateTimeFromMouse(e.clientX);
+      setCurrentTime(newTime);
+      if (videoRef.current) {
+        videoRef.current.currentTime = newTime;
+      }
+      // 드래그 중에도 툴팁이 마우스를 따라다니도록 업데이트
+      if (progressBarRef.current && duration) {
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const hoverX = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(hoverX / rect.width, 1));
+        setHoverPosition(percentage * 100);
+        setHoverTime(percentage * duration);
+      }
+    },
+    [isDragging, calculateTimeFromMouse, duration],
+  );
+
+  // 마우스 뗐을 때 (드래그 종료) 처리
+  const handleMouseUp = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    // 드래그 시작 전에 재생 중이었다면 다시 재생
+    if (wasPlaying && videoRef.current) {
+      videoRef.current.play();
+      setIsPlaying(true);
+    }
+  }, [isDragging, wasPlaying]);
+
+  // 전역 마우스 이벤트 등록 (마우스가 재생바를 벗어나도 드래그 유지되도록)
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    } else {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // 하단 컨트롤러의 재생/일시정지 버튼 작동 로직
   const togglePlay = () => {
@@ -109,7 +219,7 @@ export function VideoPlayerPage({
       if (isPlaying) {
         videoRef.current.pause();
       } else {
-        videoRef.current.play();
+        videoRef.current.play().catch(() => {});
       }
       setIsPlaying(!isPlaying);
     }
@@ -241,7 +351,6 @@ export function VideoPlayerPage({
             <div className="bg-black rounded-xl overflow-hidden aspect-video shadow-lg relative">
               <div className="w-full h-full flex items-center justify-center">
                 {" "}
-                {/* 실제 비디오 플레이어 컴포넌트로 대체 필요 (예: <video> 태그 또는 서드파티 라이브러리) */}
                 {/* Video Overlay */}
                 {isLoading ? (
                   <div className="w-full h-full flex items-center justify-center">
@@ -257,14 +366,15 @@ export function VideoPlayerPage({
                   <>
                     {/* 1. 실제 비디오 태그 추가 */}
                     <video
-                      ref={(el) => {
-                        if (el) (videoRef as any).current = el;
-                      }}
+                      ref={videoRef}
                       src={videoInfo?.videoUrl}
                       className="w-full h-full object-contain bg-black"
-                      onTimeUpdate={(e) =>
-                        setCurrentTime(e.currentTarget.currentTime)
-                      }
+                      onTimeUpdate={(e) => {
+                        // 드래그 중일 때는 onTimeUpdate가 currentTime을 덮어쓰지 않게 방지
+                        if (!isDragging) {
+                          setCurrentTime(e.currentTarget.currentTime);
+                        }
+                      }}
                       // 2. 영상 메타데이터 로드 시 duration 업데이트 (API 값이 없을 때 대비)
                       onLoadedMetadata={(e) => {
                         if (!videoInfo?.duration) {
@@ -341,130 +451,163 @@ export function VideoPlayerPage({
                   <span>{formatTime(currentTime)}</span>
                   <span>{formatTime(duration)}</span>
                 </div>
-                <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden cursor-pointer group">
-                  <div
-                    className="absolute left-0 top-0 h-full bg-blue-600 transition-all"
-                    style={{ width: `${(currentTime / duration) * 100}%` }}
-                  />
-                  {/* Highlight markers */}
-                  {derivedHighlights.map((h) => (
+                {/* Progress bar Container (툴팁 포함 구조로 변경) */}
+                <div
+                  ref={progressBarRef}
+                  className="relative py-2 cursor-pointer group" // py-2를 줘서 클릭 판정(Hit Area)을 좀 더 넓혔습니다.
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleProgressMouseMove}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  {/* Tooltip */}
+                  {(isHovering || isDragging) && (
                     <div
-                      key={h.id}
-                      className={`absolute top-0 w-1 h-full ${getHighlightColor(h.type)}`}
-                      style={{ left: `${(h.time / duration) * 100}%` }}
+                      className="absolute -top-7 -translate-x-1/2 bg-gray-900 text-white text-[11px] font-bold px-2 py-1 rounded shadow-md z-50 pointer-events-none transition-opacity"
+                      style={{ left: `${hoverPosition}%` }}
+                    >
+                      {formatTime(hoverTime)}
+                    </div>
+                  )}
+
+                  {/* 실제 재생 바 */}
+                  <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`absolute left-0 top-0 h-full bg-blue-600 ${
+                        isDragging
+                          ? ""
+                          : "transition-[width] duration-[250ms] ease-linear"
+                      }`}
+                      style={{
+                        width: `${(duration ? currentTime / duration : 0) * 100}%`,
+                      }}
                     />
-                  ))}
-                </div>
-              </div>
-
-              {/* Playback controls */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setShowHeatmap(!showHeatmap)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
-                      showHeatmap
-                        ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    }`}
-                  >
-                    <Activity className="size-4" />
-                    히트맵 {showHeatmap ? "끄기" : "켜기"}
-                  </button>
+                    {/* Highlight markers */}
+                    {derivedHighlights.map((h, idx) => (
+                      <div
+                        // 혹시 모를 key 중복 방지 위해 idx 추가
+                        key={h.id || idx}
+                        // 마커 위에서 드래그 끊김 방지
+                        className={`absolute top-0 w-1 h-full pointer-events-none ${getHighlightColor(
+                          h.type,
+                        )}`}
+                        style={{
+                          left: `${duration ? (h.time / duration) * 100 : 0}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                    <SkipBack className="size-6" />
-                  </button>
-                  <button
-                    onClick={togglePlay} // 재생/일시정지 토글
-                    className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
-                  >
-                    {isPlaying ? (
-                      <Pause className="size-8" />
-                    ) : (
-                      <Play className="size-8" />
-                    )}
-                  </button>
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                    <SkipForward className="size-6" />
-                  </button>
-                </div>
-
-                <div className="w-[120px] text-right">
-                  <span className="text-sm font-semibold text-blue-600">
-                    1.0x Speed
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Match Memo & Checklist */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Memo Card */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex flex-col h-full">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <FileText className="size-4 text-blue-600" />
-                    경기 분석 메모
-                  </h3>
-                  <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                    자동 저장됨
-                  </span>
-                </div>
-                <textarea
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  className="flex-1 w-full min-h-[120px] p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none"
-                  placeholder="영상을 보며 분석한 내용이나 개선할 점을 자유롭게 적어보세요..."
-                />
-              </div>
-
-              {/* Checklist Card */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <CheckSquare className="size-4 text-green-600" />
-                    훈련 체크리스트
-                  </h3>
-                  <button className="p-1 hover:bg-gray-100 rounded-md transition-colors">
-                    <Plus className="size-4 text-gray-400" />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {todoList.map((todo) => (
-                    <div
-                      key={todo.id}
-                      onClick={() => toggleTodo(todo.id)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                        todo.completed
-                          ? "bg-gray-50 border-transparent opacity-60"
-                          : "bg-white border-gray-100 hover:border-blue-200 hover:shadow-sm"
+                {/* Playback controls */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
+                        showHeatmap
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-100"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                       }`}
                     >
+                      <Activity className="size-4" />
+                      히트맵 {showHeatmap ? "끄기" : "켜기"}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                      <SkipBack className="size-6" />
+                    </button>
+                    <button
+                      onClick={togglePlay} // 재생/일시정지 토글
+                      className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
+                    >
+                      {isPlaying ? (
+                        <Pause className="size-8" />
+                      ) : (
+                        <Play className="size-8" />
+                      )}
+                    </button>
+                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                      <SkipForward className="size-6" />
+                    </button>
+                  </div>
+
+                  <div className="w-[120px] text-right">
+                    <span className="text-sm font-semibold text-blue-600">
+                      1.0x Speed
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Match Memo & Checklist */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Memo Card */}
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <FileText className="size-4 text-blue-600" />
+                      경기 분석 메모
+                    </h3>
+                    <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
+                      자동 저장됨
+                    </span>
+                  </div>
+                  <textarea
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    className="flex-1 w-full min-h-[120px] p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none"
+                    placeholder="영상을 보며 분석한 내용이나 개선할 점을 자유롭게 적어보세요..."
+                  />
+                </div>
+
+                {/* Checklist Card */}
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <CheckSquare className="size-4 text-green-600" />
+                      훈련 체크리스트
+                    </h3>
+                    <button className="p-1 hover:bg-gray-100 rounded-md transition-colors">
+                      <Plus className="size-4 text-gray-400" />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {todoList.map((todo) => (
                       <div
-                        className={`size-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                        key={todo.id}
+                        onClick={() => toggleTodo(todo.id)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                           todo.completed
-                            ? "bg-blue-600 border-blue-600"
-                            : "border-gray-200"
+                            ? "bg-gray-50 border-transparent opacity-60"
+                            : "bg-white border-gray-100 hover:border-blue-200 hover:shadow-sm"
                         }`}
                       >
-                        {todo.completed && (
-                          <CheckSquare className="size-3 text-white" />
-                        )}
+                        <div
+                          className={`size-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                            todo.completed
+                              ? "bg-blue-600 border-blue-600"
+                              : "border-gray-200"
+                          }`}
+                        >
+                          {todo.completed && (
+                            <CheckSquare className="size-3 text-white" />
+                          )}
+                        </div>
+                        <span
+                          className={`text-sm font-medium transition-all ${
+                            todo.completed
+                              ? "text-gray-500 line-through"
+                              : "text-gray-700"
+                          }`}
+                        >
+                          {todo.text}
+                        </span>
                       </div>
-                      <span
-                        className={`text-sm font-medium transition-all ${
-                          todo.completed
-                            ? "text-gray-500 line-through"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {todo.text}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
