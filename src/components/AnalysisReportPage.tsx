@@ -7,7 +7,7 @@ import {
   Target,
   Zap,
   Send,
-  User
+  User,
 } from "lucide-react";
 import {
   RadarChart,
@@ -27,19 +27,26 @@ import {
 } from "recharts";
 
 import { Header, type Page } from "./Header";
-import {GoogleGenerativeAI} from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = "AIzaSyA6eO9IN0JJfXujjLKTVhCCAlnbGRmhT9w";
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 
-const genAI = new GoogleGenerativeAI("API_KEY");
+if (!API_KEY) {
+  console.error(
+    "VITE_GEMINI_API_KEY is missing. Check .env.local and restart dev server.",
+  );
+}
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 async function main() {
   // 1. 모델 인스턴스 생성
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-// 2. 해당 모델에서 호출
-const result = await model.generateContent("Explain how AI works in a few words");
-console.log(result.response.text());
+  // 2. 해당 모델에서 호출
+  const result = await model.generateContent(
+    "Explain how AI works in a few words",
+  );
+  console.log(result.response.text());
 }
 
 // API에서 받아오는 데이터 형태에 맞춰 타입 정의
@@ -68,7 +75,9 @@ export function AnalysisReportPage({
   onNavigate,
   onLogout,
 }: AnalysisReportPageProps) {
-  const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<number | null>(null);
+  const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<
+    number | null
+  >(null);
 
   // ---- 데이터 로딩 ----
   const [report, setReport] = useState<ReportResponse | null>(null);
@@ -76,7 +85,9 @@ export function AnalysisReportPage({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [chatInput, setChatInput] = useState("");
-  const [chatHistory, setChatHistory] = useState<{role: string, parts: string}[]>([]);
+  const [chatHistory, setChatHistory] = useState<
+    { role: string; parts: string }[]
+  >([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   useEffect(() => {
@@ -123,7 +134,6 @@ export function AnalysisReportPage({
         y: p.y,
         // intensity는 없으니 임시: 데이터 분포에 따라 랜덤/고정치 (여기선 idx 기반)
         intensity: 0.4 + (idx % 5) * 0.12,
-    
       })) ?? [];
 
     // 2) 산점도: 히트맵 데이터를 그대로 써도 되고, 별도라면 백엔드에 추가하면 됨
@@ -131,27 +141,45 @@ export function AnalysisReportPage({
       position?.heatmapData?.map((p) => ({ x: p.x, y: p.y })) ?? [];
 
     // 3) 스트로크 바 차트: API는 {smash, clear, drop, drive}
-    const strokeData =
-      strokeTypes
-        ? [
-          { name: "스매시", key: "smash" as const, count: strokeTypes.smash, color: "#ef4444" },
-          { name: "클리어", key: "clear" as const, count: strokeTypes.clear, color: "#3b82f6" },
-          { name: "드롭", key: "drop" as const, count: strokeTypes.drop, color: "#10b981" },
-          { name: "드라이브", key: "drive" as const, count: strokeTypes.drive, color: "#f59e0b" },
+    const strokeData = strokeTypes
+      ? [
+          {
+            name: "스매시",
+            key: "smash" as const,
+            count: strokeTypes.smash,
+            color: "#ef4444",
+          },
+          {
+            name: "클리어",
+            key: "clear" as const,
+            count: strokeTypes.clear,
+            color: "#3b82f6",
+          },
+          {
+            name: "드롭",
+            key: "drop" as const,
+            count: strokeTypes.drop,
+            color: "#10b981",
+          },
+          {
+            name: "드라이브",
+            key: "drive" as const,
+            count: strokeTypes.drive,
+            color: "#f59e0b",
+          },
         ].filter((s) => typeof s.count === "number")
-        : [];
+      : [];
 
     // 4) 능력치 레이더: API는 {smash, defense, speed, stamina, accuracy}
-    const abilityData =
-      ability
-        ? [
+    const abilityData = ability
+      ? [
           { name: "스매시", value: ability.smash },
           { name: "수비", value: ability.defense },
           { name: "스피드", value: ability.speed },
           { name: "지구력", value: ability.stamina },
           { name: "정확도", value: ability.accuracy },
         ]
-        : [];
+      : [];
 
     // 5) AI 코칭: 현재 API는 feedbackText 하나
     const feedbackText = coaching?.feedbackText ?? "";
@@ -185,7 +213,9 @@ export function AnalysisReportPage({
           </button>
 
           <div className="rounded-xl border border-gray-100 p-8">
-            <div className="text-sm font-semibold text-gray-700">리포트 불러오는 중...</div>
+            <div className="text-sm font-semibold text-gray-700">
+              리포트 불러오는 중...
+            </div>
             <div className="mt-2 text-xs text-gray-400">잠시만 기다려줘.</div>
           </div>
         </main>
@@ -211,7 +241,9 @@ export function AnalysisReportPage({
           </button>
 
           <div className="rounded-xl border border-red-100 bg-red-50 p-8">
-            <div className="text-sm font-bold text-red-700">리포트를 불러오지 못했습니다.</div>
+            <div className="text-sm font-bold text-red-700">
+              리포트를 불러오지 못했습니다.
+            </div>
             <div className="mt-2 text-xs text-red-600">{errorMsg}</div>
 
             <button
@@ -245,8 +277,12 @@ export function AnalysisReportPage({
           </button>
 
           <div className="rounded-xl border border-gray-100 p-8">
-            <div className="text-sm font-semibold text-gray-700">리포트 데이터가 비어있어</div>
-            <div className="mt-2 text-xs text-gray-400">백엔드 응답을 확인해줘.</div>
+            <div className="text-sm font-semibold text-gray-700">
+              리포트 데이터가 비어있어
+            </div>
+            <div className="mt-2 text-xs text-gray-400">
+              백엔드 응답을 확인해줘.
+            </div>
           </div>
         </main>
       </div>
@@ -255,18 +291,21 @@ export function AnalysisReportPage({
 
   //gemini 연동
   const handleSendMessage = async () => {
-  if (!chatInput.trim() || !report) return;
+    if (!chatInput.trim() || !report) return;
 
-  const userMessage = chatInput;
-  setChatInput("");
-  // 1. UI에 사용자 메시지 즉시 추가
-  const updatedHistory = [...chatHistory, { role: "user", parts: userMessage }];
-  setChatHistory(updatedHistory);
-  setIsChatLoading(true);
+    const userMessage = chatInput;
+    setChatInput("");
+    // 1. UI에 사용자 메시지 즉시 추가
+    const updatedHistory = [
+      ...chatHistory,
+      { role: "user", parts: userMessage },
+    ];
+    setChatHistory(updatedHistory);
+    setIsChatLoading(true);
 
-  try {
-    // 2. Gemini에게 전달할 리포트 데이터 요약 (컨텍스트)
-    const context = `
+    try {
+      // 2. Gemini에게 전달할 리포트 데이터 요약 (컨텍스트)
+      const context = `
       당신은 전문 배드민턴 코치입니다. 다음은 사용자의 경기 분석 데이터입니다:
       - 결과: ${report.data.summary.matchOutcome} (${report.data.summary.myScore} 대 ${report.data.summary.opponentScore})
       - 총 스트로크: ${report.data.summary.totalStrokeCount}회
@@ -276,30 +315,38 @@ export function AnalysisReportPage({
       사용자의 질문에 대해 이 데이터를 바탕으로 친절하고 전문적으로 답변해주세요.
     `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const chat = model.startChat({
-      history: [
-        { role: "user", parts: [{ text: context }] },
-        { role: "model", parts: [{ text: "준비되었습니다!" }] },
-        ...chatHistory.map(h => ({
-          role: h.role === "user" ? "user" : "model",
-          parts: [{ text: h.parts }]
-        }))
-      ],
-    });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const chat = model.startChat({
+        history: [
+          { role: "user", parts: [{ text: context }] },
+          { role: "model", parts: [{ text: "준비되었습니다!" }] },
+          ...chatHistory.map((h) => ({
+            role: h.role === "user" ? "user" : "model",
+            parts: [{ text: h.parts }],
+          })),
+        ],
+      });
 
-    const result = await chat.sendMessage(userMessage);
-    const responseText = result.response.text();
+      const result = await chat.sendMessage(userMessage);
+      const responseText = result.response.text();
 
-    setChatHistory([...updatedHistory, { role: "model", parts: responseText }]);
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    setChatHistory([...updatedHistory, { role: "model", parts: "죄송합니다. 답변을 생성하는 중에 오류가 발생했습니다." }]);
-  } finally {
-    setIsChatLoading(false);
-  }
-};
-
+      setChatHistory([
+        ...updatedHistory,
+        { role: "model", parts: responseText },
+      ]);
+    } catch (error) {
+      console.error("Gemini Error:", error);
+      setChatHistory([
+        ...updatedHistory,
+        {
+          role: "model",
+          parts: "죄송합니다. 답변을 생성하는 중에 오류가 발생했습니다.",
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   const summary = ui.summary;
 
@@ -315,11 +362,11 @@ export function AnalysisReportPage({
 
       <main className="container mx-auto px-6 py-10 max-w-6xl">
         <button
-    onClick={onBack}
-    className="mb-6 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm"
-  >
-    ← 돌아가기
-  </button>
+          onClick={onBack}
+          className="mb-6 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm"
+        >
+          ← 돌아가기
+        </button>
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
           <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
@@ -327,31 +374,45 @@ export function AnalysisReportPage({
               <Award className="size-4 text-blue-500" />
               <div className="text-xs font-semibold text-gray-500">내 점수</div>
             </div>
-            <div className="text-3xl font-bold text-blue-600">{summary.myScore}</div>
+            <div className="text-3xl font-bold text-blue-600">
+              {summary.myScore}
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <Award className="size-4 text-gray-600" />
-              <div className="text-xs font-semibold text-gray-500">상대 점수</div>
+              <div className="text-xs font-semibold text-gray-500">
+                상대 점수
+              </div>
             </div>
-            <div className="text-3xl font-bold text-gray-800">{summary.opponentScore}</div>
+            <div className="text-3xl font-bold text-gray-800">
+              {summary.opponentScore}
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="size-4 text-purple-500" />
-              <div className="text-xs font-semibold text-gray-500">총 스트로크</div>
+              <div className="text-xs font-semibold text-gray-500">
+                총 스트로크
+              </div>
             </div>
-            <div className="text-3xl font-bold text-purple-600">{summary.totalStrokeCount}회</div>
+            <div className="text-3xl font-bold text-purple-600">
+              {summary.totalStrokeCount}회
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <Clock className="size-4 text-orange-500" />
-              <div className="text-xs font-semibold text-gray-500">경기 시간</div>
+              <div className="text-xs font-semibold text-gray-500">
+                경기 시간
+              </div>
             </div>
-            <div className="text-3xl font-bold text-orange-600">{summary.matchTime}</div>
+            <div className="text-3xl font-bold text-orange-600">
+              {summary.matchTime}
+            </div>
           </div>
         </div>
 
@@ -381,10 +442,38 @@ export function AnalysisReportPage({
                     stroke="#cbd5e1"
                     strokeWidth="1"
                   />
-                  <line x1="150" y1="20" x2="150" y2="380" stroke="#cbd5e1" strokeWidth="1" />
-                  <line x1="20" y1="200" x2="280" y2="200" stroke="#cbd5e1" strokeWidth="1" />
-                  <line x1="20" y1="120" x2="280" y2="120" stroke="#cbd5e1" strokeWidth="1" />
-                  <line x1="20" y1="280" x2="280" y2="280" stroke="#cbd5e1" strokeWidth="1" />
+                  <line
+                    x1="150"
+                    y1="20"
+                    x2="150"
+                    y2="380"
+                    stroke="#cbd5e1"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1="20"
+                    y1="200"
+                    x2="280"
+                    y2="200"
+                    stroke="#cbd5e1"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1="20"
+                    y1="120"
+                    x2="280"
+                    y2="120"
+                    stroke="#cbd5e1"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1="20"
+                    y1="280"
+                    x2="280"
+                    y2="280"
+                    stroke="#cbd5e1"
+                    strokeWidth="1"
+                  />
                 </svg>
               </div>
 
@@ -400,8 +489,11 @@ export function AnalysisReportPage({
                       onJumpToVideo(zone.time);
                     }
                   }}
-                  className={`absolute rounded-full transition-all cursor-pointer hover:scale-110 active:scale-95 ${selectedHeatmapPoint === index ? "ring-2 ring-blue-500 ring-offset-2" : ""
-                    }`}
+                  className={`absolute rounded-full transition-all cursor-pointer hover:scale-110 active:scale-95 ${
+                    selectedHeatmapPoint === index
+                      ? "ring-2 ring-blue-500 ring-offset-2"
+                      : ""
+                  }`}
                   style={{
                     left: `${zone.y}%`,
                     top: `${zone.x}%`,
@@ -425,12 +517,19 @@ export function AnalysisReportPage({
 
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <ScatterChart
+                  margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis type="number" dataKey="x" domain={[0, 100]} hide />
                   <YAxis type="number" dataKey="y" domain={[0, 100]} hide />
                   <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                  <Scatter name="위치" data={ui.positionData} fill="#60a5fa" fillOpacity={0.8} />
+                  <Scatter
+                    name="위치"
+                    data={ui.positionData}
+                    fill="#60a5fa"
+                    fillOpacity={0.8}
+                  />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
@@ -447,7 +546,10 @@ export function AnalysisReportPage({
 
             <div className="h-[200px] mb-8">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ui.strokeData} margin={{ top: 0, right: 20, left: -20, bottom: 0 }}>
+                <BarChart
+                  data={ui.strokeData}
+                  margin={{ top: 0, right: 20, left: -20, bottom: 0 }}
+                >
                   <CartesianGrid vertical={false} stroke="#f1f5f9" />
                   <XAxis
                     dataKey="name"
@@ -455,7 +557,11 @@ export function AnalysisReportPage({
                     tickLine={false}
                     tick={{ fontSize: 11, fill: "#94a3b8" }}
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  />
                   <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={40}>
                     {ui.strokeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -467,12 +573,22 @@ export function AnalysisReportPage({
 
             <div className="space-y-3">
               {ui.strokeData.map((stroke) => (
-                <div key={stroke.name} className="flex items-center justify-between px-2">
+                <div
+                  key={stroke.name}
+                  className="flex items-center justify-between px-2"
+                >
                   <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stroke.color }} />
-                    <span className="text-xs font-semibold text-gray-600">{stroke.name}</span>
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: stroke.color }}
+                    />
+                    <span className="text-xs font-semibold text-gray-600">
+                      {stroke.name}
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-gray-500">{stroke.count}회</span>
+                  <span className="text-xs font-bold text-gray-500">
+                    {stroke.count}회
+                  </span>
                 </div>
               ))}
             </div>
@@ -489,7 +605,10 @@ export function AnalysisReportPage({
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={ui.abilityData}>
                   <PolarGrid stroke="#f1f5f9" />
-                  <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                  <PolarAngleAxis
+                    dataKey="name"
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  />
                   <Radar
                     name="능력치"
                     dataKey="value"
@@ -507,61 +626,82 @@ export function AnalysisReportPage({
                   key={ability.name}
                   className="flex items-center justify-between py-1 border-b border-gray-50"
                 >
-                  <span className="text-xs font-semibold text-gray-500">{ability.name}</span>
-                  <span className="text-xs font-bold text-blue-600">{ability.value}점</span>
+                  <span className="text-xs font-semibold text-gray-500">
+                    {ability.name}
+                  </span>
+                  <span className="text-xs font-bold text-blue-600">
+                    {ability.value}점
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-       {/* AI 챗봇 섹션 */}
-<div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg mb-6">
-  <div className="flex items-center gap-2 mb-4">
-    <Bot className="size-5 text-blue-600" />
-    <h3 className="font-bold text-gray-800">AI 코치와 대화하기</h3>
-  </div>
+        {/* AI 챗봇 섹션 */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Bot className="size-5 text-blue-600" />
+            <h3 className="font-bold text-gray-800">AI 코치와 대화하기</h3>
+          </div>
 
-  {/* 채팅 메세지 창 */}
-  <div className="h-64 overflow-y-auto mb-4 space-y-3 p-4 bg-gray-50 rounded-xl">
-    {chatHistory.length === 0 && (
-      <p className="text-xs text-gray-400 text-center mt-10">경기에 대해 궁금한 점을 물어보세요!<br/>(예: "제 스매시 타이밍은 어땠나요?")</p>
-    )}
-    {chatHistory.map((chat, idx) => (
-      <div key={idx} className={`flex ${chat.role === "user" ? "justify-end" : "justify-start"}`}>
-        <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-          chat.role === "user" ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-800"
-        }`}>
-          {chat.parts}
+          {/* 채팅 메세지 창 */}
+          <div className="h-64 overflow-y-auto mb-4 space-y-3 p-4 bg-gray-50 rounded-xl">
+            {chatHistory.length === 0 && (
+              <p className="text-xs text-gray-400 text-center mt-10">
+                경기에 대해 궁금한 점을 물어보세요!
+                <br />
+                (예: "제 스매시 타이밍은 어땠나요?")
+              </p>
+            )}
+            {chatHistory.map((chat, idx) => (
+              <div
+                key={idx}
+                className={`flex ${chat.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+                    chat.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white border border-gray-200 text-gray-800"
+                  }`}
+                >
+                  {chat.parts}
+                </div>
+              </div>
+            ))}
+            {isChatLoading && (
+              <div className="text-xs text-blue-500 animate-pulse">
+                Gemini 코치가 생각 중...
+              </div>
+            )}
+          </div>
+
+          {/* 입력창 */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              placeholder="질문을 입력하세요..."
+              className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={isChatLoading}
+              className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+            >
+              <Send className="size-5" />
+            </button>
+          </div>
         </div>
-      </div>
-    ))}
-    {isChatLoading && <div className="text-xs text-blue-500 animate-pulse">Gemini 코치가 생각 중...</div>}
-  </div>
-
-  {/* 입력창 */}
-  <div className="flex gap-2">
-    <input
-      type="text"
-      value={chatInput}
-      onChange={(e) => setChatInput(e.target.value)}
-      onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-      placeholder="질문을 입력하세요..."
-      className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    />
-    <button
-      onClick={handleSendMessage}
-      disabled={isChatLoading}
-      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-    >
-      <Send className="size-5" />
-    </button>
-  </div>
-</div>
 
         {/* Match Summary */}
         <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-          <h2 className="text-lg font-bold mb-8 text-gray-900">경기 결과 요약</h2>
+          <h2 className="text-lg font-bold mb-8 text-gray-900">
+            경기 결과 요약
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#f8fafc] rounded-2xl p-8 text-center border border-gray-50 transition-all hover:bg-[#f1f5f9]">
               <div className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">
@@ -571,12 +711,13 @@ export function AnalysisReportPage({
                 {summary.myScore} - {summary.opponentScore}
               </div>
               <div
-                className={`text-sm font-bold ${summary.matchOutcome === "WIN"
+                className={`text-sm font-bold ${
+                  summary.matchOutcome === "WIN"
                     ? "text-green-600"
                     : summary.matchOutcome === "LOSE"
                       ? "text-red-600"
                       : "text-gray-600"
-                  }`}
+                }`}
               >
                 {summary.matchOutcome === "WIN"
                   ? "승리"
@@ -590,7 +731,9 @@ export function AnalysisReportPage({
               <div className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">
                 총 시간
               </div>
-              <div className="text-4xl font-bold text-blue-600">{summary.matchTime}</div>
+              <div className="text-4xl font-bold text-blue-600">
+                {summary.matchTime}
+              </div>
               <div className="mt-2 text-xs font-semibold text-gray-500">
                 총 스트로크: {summary.totalStrokeCount}회
               </div>
