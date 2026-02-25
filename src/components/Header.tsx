@@ -1,6 +1,6 @@
-import { LayoutDashboard, Play, FileText, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Play, FileText, LogOut, User } from "lucide-react";
 
-export type Page = 'dashboard' | 'video' | 'report' | 'account';
+export type Page = "dashboard" | "video" | "report" | "account";
 
 interface HeaderProps {
   currentPage: Page;
@@ -9,28 +9,41 @@ interface HeaderProps {
   hasSelectedVideo?: boolean;
 }
 
-export function Header({ currentPage, onNavigate, onLogout, hasSelectedVideo }: HeaderProps) {
+export function Header({
+  currentPage,
+  onNavigate,
+  onLogout,
+  hasSelectedVideo,
+}: HeaderProps) {
   const tabs = [
-    { id: 'dashboard' as Page, label: '대시보드', icon: LayoutDashboard },
-    { id: 'video' as Page, label: '영상 보기', icon: Play, disabled: !hasSelectedVideo },
-    { id: 'report' as Page, label: '분석 리포트', icon: FileText, disabled: !hasSelectedVideo },
-    { id: 'account' as Page, label: '계정 관리', icon: User },
+    { id: "dashboard" as Page, label: "대시보드", icon: LayoutDashboard },
+    {
+      id: "video" as Page,
+      label: "영상 보기",
+      icon: Play,
+      disabled: !hasSelectedVideo,
+    },
+    {
+      id: "report" as Page,
+      label: "분석 리포트",
+      icon: FileText,
+      disabled: !hasSelectedVideo,
+    },
+    { id: "account" as Page, label: "계정 관리", icon: User },
   ];
 
   return (
     <header className="h-16 flex items-center px-6 bg-white border-b border-gray-200 sticky top-0 z-50">
-  <div className="container mx-auto px-6">
-    <div className="flex items-center justify-between">
-      {/* Logo */}
-      <div className="flex items-center gap-2 text-blue-600 font-bold italic tracking-tight">
-        <span className="logo_img flex items-center translate-y-6">
-          <img
-            src="/RallyTrack.svg"
-            alt="RallyTrack"
-            className="h-24 w-auto"
-          />
-        </span>
-
+      <div className="container mx-auto px-6">
+        <div className="flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-2 text-blue-600 font-bold italic tracking-tight">
+            {/* Updated size for new SVG; removed vertical translation */}
+            <img
+              src="/RallyTrack.svg"
+              alt="RallyTrack"
+              className="h-12 w-auto"
+            />
           </div>
 
           {/* Tabs */}
@@ -47,10 +60,10 @@ export function Header({ currentPage, onNavigate, onLogout, hasSelectedVideo }: 
                   disabled={isDisabled}
                   className={`flex items-center gap-2 px-4 py-4 border-b-2 transition-colors ${
                     isActive
-                      ? 'border-blue-600 text-blue-600'
+                      ? "border-blue-600 text-blue-600"
                       : isDisabled
-                      ? 'border-transparent text-gray-400 cursor-not-allowed'
-                      : 'border-transparent text-gray-600 hover:text-blue-600 hover:border-gray-300'
+                        ? "border-transparent text-gray-400 cursor-not-allowed"
+                        : "border-transparent text-gray-600 hover:text-blue-600 hover:border-gray-300"
                   }`}
                 >
                   <Icon className="size-4" />
