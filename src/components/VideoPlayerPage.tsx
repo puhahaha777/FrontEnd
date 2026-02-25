@@ -225,6 +225,50 @@ export function VideoPlayerPage({
     }
   };
 
+  // 10초 앞/뒤로 건너뛰기 함수
+  const handleSkip = (amount: number) => {
+    if (videoRef.current) {
+      const currentVideoDuration = duration || videoRef.current.duration;
+      // 0초와 전체 길이 사이를 벗어나지 않도록 처리
+      const newTime = Math.max(
+        0,
+        Math.min(videoRef.current.currentTime + amount, currentVideoDuration),
+      );
+
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  // 유튜브처럼 키보드 단축키 지원 (좌우 방향키, 스페이스바)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 메모장(textarea)에 글씨를 입력 중일 때는 단축키가 먹히지 않도록 방지
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      switch (e.key) {
+        case "ArrowLeft":
+          handleSkip(-10);
+          break;
+        case "ArrowRight":
+          handleSkip(10);
+          break;
+        case " ":
+          e.preventDefault(); // 스페이스바 누를 때 화면이 아래로 내려가는 현상 방지
+          togglePlay();
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
   // 카테고리 매핑 함수
   const getHighlightCategory = (
     type: string,
@@ -516,7 +560,11 @@ export function VideoPlayerPage({
                   </div>
 
                   <div className="flex items-center gap-4">
-                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                    {/* 10초 뒤로 가기 버튼 */}
+                    <button
+                      onClick={() => handleSkip(-10)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
                       <SkipBack className="size-6" />
                     </button>
                     <button
@@ -529,7 +577,11 @@ export function VideoPlayerPage({
                         <Play className="size-8" />
                       )}
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                    {/* 10초 앞으로 가기 버튼 */}
+                    <button
+                      onClick={() => handleSkip(10)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
                       <SkipForward className="size-6" />
                     </button>
                   </div>
