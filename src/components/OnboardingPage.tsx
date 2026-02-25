@@ -1,16 +1,17 @@
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
-  ArrowRight,
-  Play,
+  Crosshair,
+  Activity,
+  Maximize,
   Video,
+  Database,
+  Scan,
+  TerminalSquare,
+  Upload,
+  Cpu,
   BarChart3,
-  Target,
-  Sparkles,
-  TrendingUp,
 } from "lucide-react";
-import {useNavigate} from "react-router-dom";
-
 
 interface OnboardingPageProps {
   onGetStarted: () => void;
@@ -18,63 +19,60 @@ interface OnboardingPageProps {
   onOpenSignup: () => void;
 }
 
-export function OnboardingPage({ onGetStarted, onOpenLogin, onOpenSignup }: OnboardingPageProps) {
+export function OnboardingPage({
+  onGetStarted,
+  onOpenLogin,
+  onOpenSignup,
+}: OnboardingPageProps) {
+  const [time, setTime] = useState("");
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
-  };
-
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 18 },
-    visible: { opacity: 1, y: 0 },
-  };
+  // 실시간 타임코드 생성
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setTime(
+        `${now.toISOString().split("T")[0]} ${now.toTimeString().split(" ")[0]}:${now.getMilliseconds().toString().padStart(3, "0")}`,
+      );
+    }, 47); // 빠른 업데이트로 프레임 느낌 연출
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-white font-sans text-[#1a2b4c] overflow-x-hidden">
-      {/* Navigation: 1번 파일처럼 로고 SVG로 교체 */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="logo_img flex items-center translate-y-6">
+    <div className="min-h-screen bg-[#fafbfc] font-sans text-[#1a2b4c] selection:bg-[#8ce600] selection:text-[#1a2b4c] overflow-x-hidden relative">
+      {/* Light Scanline Overlay (연구소 모니터 텍스처 효과) */}
+      <div className="pointer-events-none fixed inset-0 z-[100] bg-[linear-gradient(rgba(255,255,255,0)_50%,rgba(0,0,0,0.03)_50%),linear-gradient(90deg,rgba(0,0,0,0.01),rgba(0,0,0,0.01),rgba(0,0,0,0.01))] bg-[length:100%_4px,3px_100%] opacity-50" />
+
+      {/* Surveillance Navigation (Light Mode) */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 font-mono text-xs uppercase tracking-widest">
+        <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-[#6bba00] animate-pulse font-bold">
+              ● REC
+            </span>
+            <span className="text-slate-400 hidden sm:inline-block">
+              SYS_STATUS: ONLINE
+            </span>
+            <span className="text-slate-500 font-bold">{time}</span>
+          </div>
+
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center translate-y-1">
             <img
               src="/RallyTrack.svg"
               alt="RallyTrack"
-              className="h-24 w-auto"
+              className="h-12 w-auto object-contain"
             />
           </div>
 
-          <div className="hidden md:flex items-center gap-8">
-            <a
-              href="#features"
-              className="text-sm font-bold text-slate-500 hover:text-[#1a2b4c] transition-colors"
-            >
-              Features
-            </a>
-            <a
-              href="#how-it-works"
-              className="text-sm font-bold text-slate-500 hover:text-[#1a2b4c] transition-colors"
-            >
-              How it Works
-            </a>
-            <a
-              href="#pricing"
-              className="text-sm font-bold text-slate-500 hover:text-[#1a2b4c] transition-colors"
-            >
-              Pricing
-            </a>
-          </div>
-
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <button
               onClick={onOpenLogin}
-              className="text-sm font-bold text-[#1a2b4c] px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
+              className="text-slate-500 font-bold hover:text-[#1a2b4c] transition-colors"
             >
-             로그인
+              [ 로그인 ]
             </button>
             <button
               onClick={onOpenSignup}
-              className="bg-[#1a2b4c] text-white text-sm font-bold px-6 py-2.5 rounded-full shadow-lg shadow-blue-900/10 hover:bg-[#0b1120] transition-all hover:scale-105 whitespace-nowrap"
+              className="bg-[#f2fde0] text-[#6bba00] font-bold border border-[#8ce600] px-4 py-1.5 hover:bg-[#8ce600] hover:text-[#1a2b4c] transition-all"
             >
               시작하기
             </button>
@@ -82,338 +80,302 @@ export function OnboardingPage({ onGetStarted, onOpenLogin, onOpenSignup }: Onbo
         </div>
       </nav>
 
-      {/* Mascot Section */}
-      <section className="relative pt-40 pb-20 bg-[#f8f9fa] overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 items-center">
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={containerVariants}
-            className="relative z-10"
-          >
-            <motion.h1
-              variants={itemVariants}
-              className="text-5xl md:text-6xl font-black leading-[1.1] mb-6 text-[#1a2b4c]"
-            >
-              랠리트랙으로 <br />
-              배드민턴 실력을 <br />
-              <span className="text-[#8ce600] inline-block">레벨업</span>하세요!
-            </motion.h1>
+      {/* Hero Section (Main Camera Feed) */}
+      <section className="relative pt-24 pb-12 px-6 max-w-[1400px] mx-auto min-h-screen flex flex-col justify-center">
+        {/* HUD Elements (Light Mode Color) */}
+        <div className="absolute top-24 left-6 w-8 h-8 border-t-2 border-l-2 border-slate-300" />
+        <div className="absolute top-24 right-6 w-8 h-8 border-t-2 border-r-2 border-slate-300" />
+        <div className="absolute bottom-12 left-6 w-8 h-8 border-b-2 border-l-2 border-slate-300" />
+        <div className="absolute bottom-12 right-6 w-8 h-8 border-b-2 border-r-2 border-slate-300" />
 
-            <motion.div
-              variants={itemVariants}
-              className="mb-10 text-lg md:text-xl text-slate-500 max-w-lg"
-            >
-              <p>내 스매시 속도는 어느 정도?</p>
-              <p>AI가 실시간으로 분석해드립니다!</p>
-            </motion.div>
+        <div className="grid lg:grid-cols-12 gap-10 items-center">
+          {/* Text Content */}
+          <div className="lg:col-span-5 z-10 relative">
+            <div className="font-mono text-[#6bba00] font-bold text-sm mb-4 tracking-widest bg-[#f2fde0] inline-block px-2 py-1 border border-[#8ce600]/30">
+              &gt; TARGET_ACQUIRED: BADMINTON_PLAYER
+            </div>
+            <h1 className="text-6xl md:text-7xl font-black leading-[1.05] tracking-tighter mb-6 text-[#1a2b4c] uppercase">
+              랠리 트랙, <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6bba00] to-[#8ce600]">
+                RALLY TRACK
+              </span>
+            </h1>
+            <p className="text-slate-500 text-lg mb-10 font-mono leading-relaxed max-w-md font-medium">
+              코트 내의 선수, 셔틀콕 인식, 스트로크 분류, <br />
+              당신의 모든 움직임이 데이터가 됩니다.
+            </p>
 
             <motion.button
-              variants={itemVariants}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={onGetStarted}
-              className="bg-[#8ce600] text-[#1a2b4c] px-7 py-4 rounded-2xl text-lg font-bold shadow-[0_10px_30px_rgba(140,230,0,0.35)] flex items-center gap-3 group whitespace-nowrap"
+              className="group relative bg-white border-2 border-[#1a2b4c] text-[#1a2b4c] px-8 py-4 font-mono font-bold tracking-widest uppercase overflow-hidden shadow-[4px_4px_0_#1a2b4c] hover:shadow-[2px_2px_0_#1a2b4c] hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
             >
-              무료로 분석 시작하기
-              <ArrowRight className="group-hover:translate-x-1 transition-transform" />
-            </motion.button>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, delay: 0.15 }}
-            className="relative"
-          >
-            <div className="relative w-full aspect-square max-w-[560px] mx-auto">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-100/40 to-green-100/40 blur-3xl rounded-full" />
-
-              <img
-                src="/RallyTrack_Mascot.svg"
-                alt="Badminton Visualization"
-                className="relative z-10 w-full h-full object-contain drop-shadow-2xl"
-              />
-
-              {/* Float Cards */}
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute top-10 right-0 bg-white/90 backdrop-blur p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/50 z-20"
-              >
-                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <Sparkles className="text-yellow-600 size-5" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    SMASH SPEED
-                  </p>
-                  <p className="text-lg font-black">214 km/h</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                animate={{ y: [0, 10, 0] }}
-                transition={{
-                  duration: 3,
-                  delay: 1.5,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-                className="absolute bottom-20 left-0 bg-white/90 backdrop-blur p-4 rounded-2xl shadow-xl flex items-center gap-3 border border-white/50 z-20"
-              >
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <TrendingUp className="text-green-600 size-5" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    SITE ACTIVITY
-                  </p>
-                  <p className="text-lg font-black">+15%</p>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Introduction Section */}
-      <section id="features" className="py-28 bg-white">
-        <div className="max-w-7xl mx-auto px-6 text-center mb-16">
-          <h2 className="text-4xl font-black mb-4">RallyTrack 소개</h2>
-          <p className="text-slate-500 text-lg">
-            당신의 플레이를 분석하는 핵심 기술
-          </p>
-        </div>
-
-        <div className="max-w-5xl mx-auto px-6 grid md:grid-cols-2 gap-8">
-          <motion.div
-            whileHover={{ y: -8 }}
-            className="bg-[#f8fafc] p-10 rounded-[32px] border border-slate-100 shadow-sm"
-          >
-            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-8">
-              <Target className="text-blue-600 size-8" />
-            </div>
-            <h3 className="text-2xl font-bold mb-4">셔틀콕 추적 및 맵 시각화</h3>
-            <p className="text-slate-500 leading-relaxed text-lg">
-              AI 비전 기술로 셔틀콕의 움직임을 정밀하게 분석하고, 경기 흐름을
-              맵 형태로 시각화합니다.
-            </p>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -8 }}
-            className="bg-[#f8fafc] p-10 rounded-[32px] border border-slate-100 shadow-sm"
-          >
-            <div className="w-16 h-16 bg-[#f7fcc2] rounded-2xl flex items-center justify-center mb-8">
-              <Play className="text-[#8AB800] size-8" />
-            </div>
-            <h3 className="text-2xl font-bold mb-4">자동 하이라이트 생성</h3>
-            <p className="text-slate-500 leading-relaxed text-lg">
-              핵심 이벤트를 자동으로 타임라인화하여, 클릭 한 번으로 원하는 장면을
-              즉시 확인합니다.
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* How it Works Section */}
-      <section id="how-it-works" className="py-28 bg-white">
-        <div className="max-w-7xl mx-auto px-6 text-center mb-20">
-          <h2 className="text-4xl font-black mb-4">RallyTrack 사용 방법</h2>
-          <p className="text-slate-500 text-lg">
-            복잡한 과정 없이 단계별로 끝나는 분석
-          </p>
-        </div>
-
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="relative mb-24">
-            <div className="absolute left-[50%] top-8 bottom-8 w-1 bg-slate-100 hidden md:block -translate-x-1/2" />
-
-            <div className="space-y-20">
-              <StepItem
-                num={1}
-                title="영상 넣기"
-                desc="분석하고 싶은 배드민턴 경기 영상을 업로드하세요."
-                icon={<Video className="text-blue-600" />}
-                color="bg-blue-50"
-                align="right"
-              />
-              <StepItem
-                num={2}
-                title="분석 후 영상 확인하기"
-                desc="AI가 셔틀콕과 선수를 감지하여 분석된 오버레이 영상을 제공합니다."
-                icon={<Sparkles className="text-indigo-600" />}
-                color="bg-indigo-50"
-                align="left"
-              />
-              <StepItem
-                num={3}
-                title="리포트 & 하이라이트 확인"
-                desc="스매시 속도, 활동량, 승률 등 종합 데이터를 확인하세요."
-                icon={<BarChart3 className="text-purple-600" />}
-                color="bg-purple-50"
-                align="right"
-              />
-            </div>
-          </div>
-
-          {/* Step 4 */}
-          <div className="mt-24">
-            <div className="flex justify-center mb-6">
-              <span className="bg-white border border-slate-200 px-4 py-1.5 rounded-full text-sm font-bold text-slate-500 shadow-sm">
-                Step 4
+              <div className="absolute inset-0 bg-[#1a2b4c] -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out z-0" />
+              <span className="relative z-10 group-hover:text-white flex items-center gap-3">
+                <Scan size={20} />
+                영상 분석 시작하기
               </span>
-            </div>
-            <h3 className="text-3xl font-black text-center mb-10">
-              심층 데이터 시각화
-            </h3>
-
-            <div className="bg-[#f8fafc] rounded-[40px] p-8 md:p-12 border border-slate-100 shadow-inner grid md:grid-cols-2 gap-8">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
-                    <TrendingUp className="text-red-600 size-6" />
-                  </div>
-                  <h4 className="text-xl font-bold">히트맵 (Heatmap)</h4>
-                </div>
-                <div className="aspect-video bg-gradient-to-br from-red-50 to-white rounded-2xl mb-6 relative overflow-hidden border border-slate-100 flex items-center justify-center">
-                  <div className="w-32 h-32 bg-red-400/20 rounded-full blur-3xl animate-pulse" />
-                </div>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  코트 내 주요 활동 영역을 히트맵으로 시각화합니다.
-                </p>
-              </div>
-
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Target className="text-blue-600 size-6" />
-                  </div>
-                  <h4 className="text-xl font-bold">위치 산점도 (Scatter)</h4>
-                </div>
-
-                {/* ✅ 여기 버그 수정: [.Array(15)] -> Array.from */}
-                <div className="aspect-video bg-slate-50 rounded-2xl mb-6 relative p-4 border border-slate-100">
-                  {Array.from({ length: 15 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-1.5 h-1.5 bg-blue-500 rounded-full"
-                      style={{
-                        position: "absolute",
-                        left: `${((i * 7) % 80) + 10}%`,
-                        top: `${((i * 13) % 80) + 10}%`,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  득점/실점 지점을 점으로 표시해 패턴을 분석합니다.
-                </p>
-              </div>
-            </div>
+            </motion.button>
           </div>
 
-          {/* Step 5 */}
-          <div className="mt-16">
+          {/* Main Camera UI (Light Theme) */}
+          <div className="lg:col-span-7 relative h-[600px] w-full border border-slate-200 bg-white shadow-xl shadow-slate-200/50 overflow-hidden group">
+            {/* Top Bar of Camera Feed */}
+            <div className="absolute top-0 left-0 w-full h-8 bg-white/90 backdrop-blur border-b border-slate-200 flex justify-between items-center px-4 font-mono text-[10px] text-slate-500 z-20 font-bold">
+              <span>CAM-01 [MAIN_COURT]</span>
+              <span>FOV: 120° | 60FPS</span>
+            </div>
+
+            {/* Main Image */}
+            <img
+              src="https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&q=80"
+              alt="Main Feed"
+              className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity duration-700 filter contrast-[1.1]"
+            />
+            {/* Very light blue tint for lab feel */}
+            <div className="absolute inset-0 bg-blue-50/10 mix-blend-multiply pointer-events-none" />
+
+            {/* AI Bounding Box & Crosshair Animations */}
             <motion.div
-              whileHover={{ scale: 1.01 }}
-              className="bg-[#f2fde0] border-2 border-[#8ce600]/20 p-8 md:p-12 rounded-[40px] shadow-2xl shadow-green-900/5 flex flex-col md:flex-row items-center gap-10"
+              animate={{ x: [0, 20, -10, 0], y: [0, -15, 10, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+              className="absolute top-[30%] left-[40%] w-32 h-48 border-2 border-[#8ce600] bg-[#8ce600]/10 z-20 shadow-[0_0_15px_rgba(140,230,0,0.5)]"
             >
-              <div className="shrink-0">
-                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-lg border-4 border-white">
-                  <Sparkles className="text-[#1a2b4c] size-10" />
-                </div>
+              <div className="absolute -top-6 left-[-2px] bg-[#8ce600] text-[#1a2b4c] font-mono text-[10px] px-1.5 py-0.5 font-bold tracking-wider">
+                ID:P1 [98%]
+              </div>
+              <Crosshair className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#8ce600]" />
+            </motion.div>
+
+            {/* Live Data Overlay (Light) */}
+            <div className="absolute bottom-4 left-4 font-mono text-xs text-slate-600 z-20 space-y-1 bg-white/90 p-3 border border-slate-200 shadow-lg backdrop-blur-sm font-bold">
+              <div>
+                &gt; VELOCITY :{" "}
+                <span className="text-[#1a2b4c]">312.4 KM/H</span>
               </div>
               <div>
-                <h3 className="text-3xl font-black mb-4">5. AI 코칭</h3>
-                <p className="text-lg text-[#1a2b4c]/80 leading-relaxed">
-                  AI 코치가 장단점을 분석하여 즉시 적용 가능한 훈련법을 제안합니다.
-                </p>
+                &gt; STROKE_TYPE :{" "}
+                <span className="text-[#1a2b4c]">CALCULATING...</span>
               </div>
-            </motion.div>
+              <div>
+                &gt; COURT_POS :{" "}
+                <span className="text-[#1a2b4c]">X:42 Y:88</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer
-        id="pricing"
-        className="bg-white border-t border-slate-100 pt-16 pb-10"
+      <section
+        id="workflow"
+        className="py-20 px-6 max-w-[1400px] mx-auto border-t border-slate-200 relative"
       >
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-10">
-            <div>
-              <div className="text-2xl font-black mb-2">RallyTrack</div>
-              <p className="text-slate-500 text-sm">
-                AI-Powered Badminton Analytics Platform
-              </p>
+        <div className="flex items-center gap-4 mb-16">
+          <Activity className="text-[#1a2b4c]" />
+          <h2 className="text-2xl font-mono font-bold uppercase tracking-widest text-[#1a2b4c]">
+            RALLY TRACK 사용 방법
+          </h2>
+          <div className="h-[1px] flex-1 bg-slate-200 ml-4" />
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-8 relative">
+          {/* Connecting Line (Desktop) */}
+          <div className="hidden md:block absolute top-[28px] left-[15%] right-[15%] h-[2px] bg-slate-200 border-dashed border-t-2 border-slate-300 z-0" />
+
+          {/* Step 1 */}
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-14 h-14 bg-white border-2 border-slate-200 rounded-lg flex items-center justify-center mb-6 group-hover:border-[#6bba00] group-hover:shadow-[0_0_15px_rgba(140,230,0,0.3)] transition-all bg-clip-padding relative overflow-hidden">
+              <Upload className="text-[#1a2b4c] group-hover:scale-110 transition-transform relative z-10" />
+              <div className="absolute inset-0 bg-[#f2fde0] translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </div>
-            <div className="flex gap-8">
-              <a href="#" className="text-sm text-slate-500 hover:text-[#1a2b4c]">
-                Privacy
-              </a>
-              <a href="#" className="text-sm text-slate-500 hover:text-[#1a2b4c]">
-                Terms
-              </a>
-              <a href="#" className="text-sm text-slate-500 hover:text-[#1a2b4c]">
-                Contact
-              </a>
+            <div className="bg-[#f2fde0] text-[#6bba00] font-mono text-[10px] font-bold px-2 py-1 border border-[#8ce600]/30 mb-3 tracking-widest">
+              [SEQ.01] DATA_INPUT
+            </div>
+            <h3 className="text-lg font-black text-[#1a2b4c] mb-2">
+              경기 영상 업로드
+            </h3>
+            <p className="text-slate-500 font-medium text-sm leading-relaxed max-w-[250px]">
+              스마트폰이나 카메라로 촬영한 배드민턴 경기 영상을 시스템에 바로
+              업로드합니다.
+            </p>
+          </div>
+
+          {/* Step 2 */}
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-14 h-14 bg-white border-2 border-slate-200 rounded-lg flex items-center justify-center mb-6 group-hover:border-[#6bba00] group-hover:shadow-[0_0_15px_rgba(140,230,0,0.3)] transition-all bg-clip-padding relative overflow-hidden">
+              <Cpu className="text-[#1a2b4c] group-hover:scale-110 transition-transform relative z-10" />
+              <div className="absolute inset-0 bg-[#f2fde0] translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            </div>
+            <div className="bg-[#f2fde0] text-[#6bba00] font-mono text-[10px] font-bold px-2 py-1 border border-[#8ce600]/30 mb-3 tracking-widest">
+              [SEQ.02] AI_PROCESSING
+            </div>
+            <h3 className="text-lg font-black text-[#1a2b4c] mb-2">
+              엔진 비전 분석
+            </h3>
+            <p className="text-slate-500 font-medium text-sm leading-relaxed max-w-[250px]">
+              랠리 트랙 코어 엔진이 선수와 셔틀콕의 움직임을 프레임 단위로
+              정밀하게 스캔합니다.
+            </p>
+          </div>
+
+          {/* Step 3 */}
+          <div className="relative z-10 flex flex-col items-center text-center group">
+            <div className="w-14 h-14 bg-white border-2 border-slate-200 rounded-lg flex items-center justify-center mb-6 group-hover:border-[#6bba00] group-hover:shadow-[0_0_15px_rgba(140,230,0,0.3)] transition-all bg-clip-padding relative overflow-hidden">
+              <BarChart3 className="text-[#1a2b4c] group-hover:scale-110 transition-transform relative z-10" />
+              <div className="absolute inset-0 bg-[#f2fde0] translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            </div>
+            <div className="bg-[#f2fde0] text-[#6bba00] font-mono text-[10px] font-bold px-2 py-1 border border-[#8ce600]/30 mb-3 tracking-widest">
+              [SEQ.03] RESULT_OUTPUT
+            </div>
+            <h3 className="text-lg font-black text-[#1a2b4c] mb-2">
+              분석 리포트 확인
+            </h3>
+            <p className="text-slate-500 font-medium text-sm leading-relaxed max-w-[250px]">
+              자동 생성된 하이라이트 영상과 히트맵, 산점도 등 심층 데이터
+              리포트를 확인하세요.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Multi-Camera Feeds Section */}
+      <section
+        id="feeds"
+        className="py-20 px-6 max-w-[1400px] mx-auto border-t border-slate-200"
+      >
+        <div className="flex items-center gap-4 mb-10">
+          <Database className="text-[#1a2b4c]" />
+          <h2 className="text-2xl font-mono font-bold uppercase tracking-widest text-[#1a2b4c]">
+            다각도 분석 화면
+          </h2>
+          <div className="h-[1px] flex-1 bg-slate-200 ml-4" />
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Feed 1 */}
+          <div className="relative aspect-video border border-slate-200 bg-slate-100 overflow-hidden group shadow-sm">
+            <div className="absolute top-2 left-2 z-10 bg-white/90 text-[#1a2b4c] font-mono font-bold text-[10px] px-2 py-0.5 border border-slate-200 shadow-sm">
+              CAM-02: HEATMAP
+            </div>
+            <img
+              src="https://images.unsplash.com/photo-1613918431703-e60802773bba?auto=format&fit=crop&q=80"
+              alt="Feed 2"
+              className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 transition-all duration-500"
+            />
+            {/* Heatmap Simulation Overlay */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(255,0,0,0.5)_0%,transparent_50%)] mix-blend-multiply" />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Maximize className="text-white drop-shadow-md w-10 h-10" />
             </div>
           </div>
-          <div className="text-center md:text-left text-slate-400 text-xs">
-            © 2026 RallyTrack. All rights reserved.
+
+          {/* Feed 2 (Mascot / 3D Render Placeholder) */}
+          <div className="relative aspect-video border border-slate-200 bg-white overflow-hidden flex items-center justify-center group shadow-sm">
+            <div className="absolute top-2 left-2 z-10 bg-white/90 text-[#1a2b4c] font-mono font-bold text-[10px] px-2 py-0.5 border border-slate-200 shadow-sm">
+              CAM-03: 3D_TRACKING
+            </div>
+
+            {/* Light Grid Background */}
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
+
+            <img
+              src="/RallyTrack_Mascot.svg"
+              alt="Mascot"
+              className="h-3/4 w-auto relative z-10 drop-shadow-xl animate-[pulse_4s_ease-in-out_infinite]"
+            />
+          </div>
+
+          {/* Feed 3 */}
+          <div className="relative aspect-video border border-slate-200 bg-slate-100 overflow-hidden group shadow-sm">
+            <div className="absolute top-2 left-2 z-10 bg-white/90 text-[#1a2b4c] font-mono font-bold text-[10px] px-2 py-0.5 border border-slate-200 shadow-sm">
+              CAM-04: SHUTTLE_POS
+            </div>
+            <img
+              src="https://images.unsplash.com/photo-1622279457486-62dcc4a631d6?auto=format&fit=crop&q=80"
+              alt="Feed 3"
+              className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 transition-all duration-500"
+            />
+            {/* Scatter Simulation */}
+            <div className="absolute z-20 inset-0 pointer-events-none p-6">
+              <div className="absolute top-1/4 left-1/3 w-2.5 h-2.5 bg-blue-500 rounded-full shadow-[0_0_8px_blue]" />
+              <div className="absolute top-1/2 left-2/3 w-2.5 h-2.5 bg-blue-500 rounded-full shadow-[0_0_8px_blue]" />
+              <div className="absolute bottom-1/3 left-1/2 w-2.5 h-2.5 bg-red-500 rounded-full shadow-[0_0_8px_red]" />
+            </div>
+            <div className="absolute bottom-2 right-2 text-white bg-[#1a2b4c] px-2 py-0.5 font-mono text-[10px] font-bold shadow-sm">
+              P_COUNT: 03
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Surveillance Terminal (Features - Light Mode) */}
+      <section id="features" className="py-20 px-6 max-w-[1400px] mx-auto">
+        <div className="border border-slate-200 bg-white shadow-lg p-8 lg:p-12 relative overflow-hidden">
+          {/* Terminal Deco */}
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#8ce600] to-transparent opacity-80" />
+          <TerminalSquare className="text-slate-300 mb-8 w-12 h-12" />
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              {
+                id: "SYS.01",
+                title: "자세 및 타구 분석",
+                desc: "프레임 단위로 선수의 관절 위치와 자세를 인식하여 스트로크 종류를 분석.",
+              },
+              {
+                id: "SYS.02",
+                title: "하이라이트 생성",
+                desc: "주요 득점/실점 시퀀스 자동 감지 및 타임라인 클립 추출.",
+              },
+              {
+                id: "SYS.03",
+                title: "코트 분석",
+                desc: "코트 점유율 히트맵 및 스매시 타격 지점 산점도 매핑.",
+              },
+              {
+                id: "SYS.04",
+                title: "AI_코칭",
+                desc: "수집된 빅데이터 기반 약점 분석 및 맞춤형 전술 피드백 생성.",
+              },
+            ].map((feature, i) => (
+              <div
+                key={i}
+                className="group border-l-2 border-slate-100 pl-6 hover:border-[#6bba00] transition-colors"
+              >
+                <div className="text-[#6bba00] font-mono text-xs font-bold mb-2">
+                  [{feature.id}]
+                </div>
+                <h3 className="text-xl font-black text-[#1a2b4c] mb-3 uppercase tracking-wide">
+                  {feature.title}
+                </h3>
+                <p className="text-slate-500 text-sm font-mono leading-relaxed font-medium group-hover:text-slate-700 transition-colors">
+                  {feature.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer (Light Mode) */}
+      <footer className="border-t border-slate-200 bg-white py-8 mt-20">
+        <div className="max-w-[1400px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center font-mono text-xs font-bold text-slate-400">
+          <div className="flex items-center gap-2 mb-4 md:mb-0 text-slate-500">
+            <Activity size={14} className="text-[#6bba00]" />
+            <span>RALLYTRACK_SYSTEM v2.0.26</span>
+          </div>
+          <div className="flex gap-6">
+            <a href="#" className="hover:text-[#1a2b4c] transition-colors">
+              ENCRYPTION_POLICY
+            </a>
+            <a href="#" className="hover:text-[#1a2b4c] transition-colors">
+              USER_TERMS
+            </a>
+            <span>© 2026</span>
           </div>
         </div>
       </footer>
-    </div>
-  );
-}
-
-function StepItem({
-  num,
-  title,
-  desc,
-  icon,
-  color,
-  align,
-}: {
-  num: number;
-  title: string;
-  desc: string;
-  icon: ReactNode;
-  color: string;
-  align: "left" | "right";
-}) {
-  const isRight = align === "right";
-  return (
-    <div
-      className={`relative flex items-center justify-between ${
-        isRight ? "md:flex-row" : "md:flex-row-reverse"
-      } flex-col gap-8`}
-    >
-      <div
-        className={`flex-1 ${
-          isRight ? "md:text-left" : "md:text-right"
-        } text-center w-full z-10`}
-      >
-        <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-white border-4 border-[#f8fafc] rounded-full shadow-lg z-20 p-2">
-          <div
-            className={`${color} w-full h-full rounded-full flex items-center justify-center text-xl font-bold`}
-          >
-            {icon}
-          </div>
-        </div>
-
-        <div className="inline-block w-full max-w-[440px] p-2">
-          <h4 className="text-2xl font-black mb-2">
-            {num}. {title}
-          </h4>
-          <p className="text-slate-500 leading-relaxed">{desc}</p>
-        </div>
-      </div>
-      <div className="flex-1 hidden md:block" />
     </div>
   );
 }
