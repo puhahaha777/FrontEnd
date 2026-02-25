@@ -62,7 +62,16 @@ export function VideoPlayerPage({
     { id: 2, text: "백핸드 드라이브 보완", completed: true },
     { id: 3, text: "풋워크 속도 체크", completed: false },
   ]);
+
+  // Video element Ref 및 꾹 누르기 상태 관리
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isSpeedUp, setIsSpeedUp] = useState(false);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressing = useRef(false);
+  const preventClick = useRef(false);
+
+  const [playbackRate, setPlaybackRate] = useState(1.0); // 현재 선택된 배속
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false); // 배속 메뉴 팝업 표시 여부
 
   // 재생바 드래그 관련 상태 및 Ref 추가
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -213,8 +222,9 @@ export function VideoPlayerPage({
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // 하단 컨트롤러의 재생/일시정지 버튼 작동 로직
   const togglePlay = () => {
+    if (preventClick.current) return; // 꾹 누르기 직후의 클릭 무시
+
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
@@ -223,6 +233,53 @@ export function VideoPlayerPage({
       }
       setIsPlaying(!isPlaying);
     }
+  };
+
+  // 영상 꾹 누르기 시작 (2배속)
+  const handleVideoPointerDown = () => {
+    preventClick.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressing.current = true;
+      preventClick.current = true;
+      setIsSpeedUp(true);
+
+      if (videoRef.current) {
+        videoRef.current.playbackRate = 2.0; // 2배속 적용
+        if (!isPlaying) {
+          videoRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      }
+    }, 300); // 0.3초 누르면 발동
+  };
+
+  // 영상 마우스 떼기/벗어남 (원래 속도)
+  const handleVideoPointerUpOrLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+    if (isLongPressing.current) {
+      isLongPressing.current = false;
+      setIsSpeedUp(false);
+
+      if (videoRef.current) {
+        videoRef.current.playbackRate = playbackRate; // 원래 배속으로 복원
+      }
+
+      // 꾹 누르기 끝난 후 바로 재생/일시정지(onClick)가 발동되는 것 방지
+      setTimeout(() => {
+        preventClick.current = false;
+      }, 50);
+    }
+  };
+
+  // 배속 메뉴에서 속도 선택 시 처리 함수
+  const handlePlaybackRateChange = (rate: number) => {
+    setPlaybackRate(rate);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = rate;
+    }
+    setShowSpeedMenu(false); // 선택 후 메뉴 닫기
   };
 
   // 10초 앞/뒤로 건너뛰기 함수
@@ -412,7 +469,7 @@ export function VideoPlayerPage({
                     <video
                       ref={videoRef}
                       src={videoInfo?.videoUrl}
-                      className="w-full h-full object-contain bg-black"
+                      className="w-full h-full object-contain bg-black cursor-pointer"
                       onTimeUpdate={(e) => {
                         // 드래그 중일 때는 onTimeUpdate가 currentTime을 덮어쓰지 않게 방지
                         if (!isDragging) {
@@ -428,7 +485,20 @@ export function VideoPlayerPage({
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => setIsPlaying(false)}
                       onClick={togglePlay} // 화면 클릭 시 재생/일시정지
+                      onPointerDown={handleVideoPointerDown}
+                      onPointerUp={handleVideoPointerUpOrLeave}
+                      onPointerLeave={handleVideoPointerUpOrLeave}
                     />
+
+                    {/* 2배속 재생 안내 오버레이 */}
+                    {isSpeedUp && (
+                      <div className="absolute top-6 right-6 flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white pointer-events-none animate-pulse z-50">
+                        <span className="text-sm font-bold tracking-wide">
+                          2배속 재생 중
+                        </span>
+                        <SkipForward className="size-4" />
+                      </div>
+                    )}
 
                     {/* 2. Score Overlay (비디오 위에 띄움) */}
                     <div className="absolute top-6 left-6 flex items-center gap-4 bg-black/40 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 text-white pointer-events-none">
@@ -586,10 +656,45 @@ export function VideoPlayerPage({
                     </button>
                   </div>
 
-                  <div className="w-[120px] text-right">
-                    <span className="text-sm font-semibold text-blue-600">
-                      1.0x Speed
-                    </span>
+                  <div className="relative w-[120px] text-right flex justify-end">
+                    <button
+                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                      className="text-sm font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-md transition-all flex items-center gap-1"
+                    >
+                      {isSpeedUp
+                        ? "2.0x Speed"
+                        : `${playbackRate === 1 ? "1.0" : playbackRate}x Speed`}
+                    </button>
+
+                    {/* 배속 선택 메뉴 팝업 (위에서 아래로 높은 배속 배치) */}
+                    {showSpeedMenu && (
+                      <>
+                        {/* 메뉴 바깥을 클릭하면 닫히도록 하는 투명 배경 */}
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowSpeedMenu(false)}
+                        />
+                        <div className="absolute bottom-full right-0 mb-2 w-28 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                          <div className="py-1 flex flex-col">
+                            {[2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.25].map(
+                              (rate) => (
+                                <button
+                                  key={rate}
+                                  onClick={() => handlePlaybackRateChange(rate)}
+                                  className={`w-full px-4 py-2 text-sm text-left transition-colors ${
+                                    playbackRate === rate
+                                      ? "bg-blue-50 text-blue-600 font-bold"
+                                      : "text-gray-700 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {rate === 1.0 ? "보통" : `${rate}x`}
+                                </button>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
