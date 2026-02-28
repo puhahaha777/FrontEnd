@@ -6,7 +6,6 @@ import {
   ScatterChart as ScatterIcon,
   Target,
   Zap,
-  Send,
 } from "lucide-react";
 import {
   RadarChart,
@@ -28,11 +27,11 @@ import {
 import { Header, type Page } from "./Header";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// ✅ env에서 키 읽기
+// ✅ env에서 키 읽기 (Vite는 VITE_ prefix 필수)
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 
-// ✅ 모델 ID는 버전 붙은 걸로 (v1beta에서 baseModelId로 404 뜨는 케이스 대응)
-const GEMINI_MODEL_ID = "gemini-2.5-flash-latest";
+// ✅ 모델 후보(환경에 따라 "models/" prefix가 필요할 때가 있어 fallback)
+const GEMINI_MODEL_CANDIDATES = ["gemini-2.5-flash", "models/gemini-2.5-flash"];
 
 if (!API_KEY) {
   console.error(
@@ -56,7 +55,7 @@ type UiHeatmapZone = {
   x: number;
   y: number;
   intensity: number;
-  time?: number; // API에 없으면 undefined
+  time?: number;
 };
 
 export function AnalysisReportPage({
@@ -75,12 +74,12 @@ export function AnalysisReportPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [chatInput, setChatInput] = useState("");
-  const [chatHistory, setChatHistory] = useState<
-    { role: string; parts: string }[]
-  >([]);
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  // ---- AI 브리핑 ----
+  const [aiBriefing, setAiBriefing] = useState<string>("");
+  const [aiBriefingLoading, setAiBriefingLoading] = useState(false);
+  const [aiBriefingError, setAiBriefingError] = useState<string | null>(null);
 
+  // ✅ 리포트 fetch
   useEffect(() => {
     let alive = true;
 
@@ -107,7 +106,102 @@ export function AnalysisReportPage({
     };
   }, [videoId]);
 
-  // 데이터 매핑 (report가 없을 수도 있으니 안전하게)
+  // ✅ AI 브리핑 생성 (report 로드된 뒤 1회)
+  useEffect(() => {
+    if (!report) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setAiBriefingLoading(true);
+        setAiBriefingError(null);
+
+        if (!API_KEY) {
+          throw new Error("Gemini API Key가 없습니다. .env.local을 확인해주세요.");
+        }
+
+        const summary = report.data.summary;
+        const ability = report.data.abilityMetrics;
+        const stroke = report.data.strokeTypes;
+        const coaching = report.data.aiCoaching;
+
+        const prompt = `
+당신은 전문 배드민턴 코치입니다.
+아래 경기 분석 데이터를 기반으로 'AI 브리핑' 형태의 리포트 요약을 작성하세요.
+
+[경기 요약]
+- 결과: ${summary.matchOutcome} (${summary.myScore} : ${summary.opponentScore})
+- 경기 시간: ${summary.matchTime}
+- 총 스트로크: ${summary.totalStrokeCount}
+
+[능력치(0~100)]
+- 스매시: ${ability.smash}
+- 수비: ${ability.defense}
+- 스피드: ${ability.speed}
+- 지구력: ${ability.stamina}
+- 정확도: ${ability.accuracy}
+
+[스트로크 카운트]
+- smash: ${stroke.smash}, clear: ${stroke.clear}, drop: ${stroke.drop}, drive: ${stroke.drive}
+
+[기존 코치 피드백]
+${coaching?.feedbackText ?? "(없음)"}
+
+[출력 형식]
+- 너무 길지 않게(모바일에서도 보기 좋게) 작성
+- 아래 섹션을 반드시 포함:
+1) 한 줄 총평
+2) 핵심 지표 요약(불릿 3~5개)
+3) 강점 TOP2
+4) 보완점 TOP2
+5) 추천 훈련 3가지(각각 1~2줄, 구체적으로)
+- 마크다운 사용 가능(제목/불릿 정도)
+        `.trim();
+
+        const genAI = new GoogleGenerativeAI(API_KEY);
+
+        // ✅ 모델명 404 방지용 fallback 시도
+        let text = "";
+        let lastErr: any = null;
+
+        for (const modelName of GEMINI_MODEL_CANDIDATES) {
+          try {
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const result = await model.generateContent(prompt);
+            text = result.response.text();
+            lastErr = null;
+            break;
+          } catch (err: any) {
+            lastErr = err;
+          }
+        }
+
+        if (lastErr) {
+          throw lastErr;
+        }
+
+        if (!alive) return;
+        setAiBriefing(text || "");
+      } catch (e: any) {
+        if (!alive) return;
+        setAiBriefingError(
+          e?.message ??
+            "AI 브리핑 생성 중 오류가 발생했습니다. (API Key/모델명/권한 설정 확인)",
+        );
+        setAiBriefing("");
+      } finally {
+        if (!alive) return;
+        setAiBriefingLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [report]);
+
+  // 데이터 매핑
   const ui = useMemo(() => {
     const data = report?.data;
 
@@ -121,7 +215,6 @@ export function AnalysisReportPage({
       position?.heatmapData?.map((p, idx) => ({
         x: p.x,
         y: p.y,
-        // intensity는 임시 값
         intensity: 0.4 + (idx % 5) * 0.12,
       })) ?? [];
 
@@ -130,10 +223,30 @@ export function AnalysisReportPage({
 
     const strokeData = strokeTypes
       ? [
-          { name: "스매시", key: "smash" as const, count: strokeTypes.smash, color: "#ef4444" },
-          { name: "클리어", key: "clear" as const, count: strokeTypes.clear, color: "#3b82f6" },
-          { name: "드롭", key: "drop" as const, count: strokeTypes.drop, color: "#10b981" },
-          { name: "드라이브", key: "drive" as const, count: strokeTypes.drive, color: "#f59e0b" },
+          {
+            name: "스매시",
+            key: "smash" as const,
+            count: strokeTypes.smash,
+            color: "#ef4444",
+          },
+          {
+            name: "클리어",
+            key: "clear" as const,
+            count: strokeTypes.clear,
+            color: "#3b82f6",
+          },
+          {
+            name: "드롭",
+            key: "drop" as const,
+            count: strokeTypes.drop,
+            color: "#10b981",
+          },
+          {
+            name: "드라이브",
+            key: "drive" as const,
+            count: strokeTypes.drive,
+            color: "#f59e0b",
+          },
         ].filter((s) => typeof s.count === "number")
       : [];
 
@@ -253,72 +366,6 @@ export function AnalysisReportPage({
     );
   }
 
-  // ✅ Gemini 연동 (여기만 핵심)
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || !report) return;
-
-    if (!API_KEY) {
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "model", parts: "Gemini API Key가 설정되지 않았습니다. .env.local을 확인해주세요." },
-      ]);
-      return;
-    }
-
-    const userMessage = chatInput;
-    setChatInput("");
-
-    const updatedHistory = [...chatHistory, { role: "user", parts: userMessage }];
-    setChatHistory(updatedHistory);
-    setIsChatLoading(true);
-
-    try {
-      const genAI = new GoogleGenerativeAI(API_KEY);
-
-      const context = `
-당신은 전문 배드민턴 코치입니다. 다음은 사용자의 경기 분석 데이터입니다:
-- 결과: ${report.data.summary.matchOutcome} (${report.data.summary.myScore} 대 ${report.data.summary.opponentScore})
-- 총 스트로크: ${report.data.summary.totalStrokeCount}회
-- 능력치: 스매시(${report.data.abilityMetrics.smash}), 수비(${report.data.abilityMetrics.defense}), 정확도(${report.data.abilityMetrics.accuracy})
-- 코치 피드백 요약: ${report.data.aiCoaching.feedbackText}
-
-사용자의 질문에 대해 이 데이터를 바탕으로 친절하고 전문적으로 답변해주세요.
-`;
-
-      const model = genAI.getGenerativeModel({
-         model: "gemini-2.5-flash",
-        });
-
-      const chat = model.startChat({
-        history: [
-          { role: "user", parts: [{ text: context }] },
-          { role: "model", parts: [{ text: "준비되었습니다!" }] },
-          ...chatHistory.map((h) => ({
-            role: h.role === "user" ? "user" : "model",
-            parts: [{ text: h.parts }],
-          })),
-        ],
-      });
-
-      const result = await chat.sendMessage(userMessage);
-      const responseText = result.response.text();
-
-      setChatHistory([...updatedHistory, { role: "model", parts: responseText }]);
-    } catch (error: any) {
-      console.error("Gemini Error:", error);
-      setChatHistory([
-        ...updatedHistory,
-        {
-          role: "model",
-          parts:
-            "죄송합니다. 답변을 생성하는 중에 오류가 발생했습니다. (API Key / Model ID / 권한 설정을 확인해주세요)",
-        },
-      ]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
-
   const summary = ui.summary;
 
   return (
@@ -361,7 +408,9 @@ export function AnalysisReportPage({
               <Zap className="size-4 text-purple-500" />
               <div className="text-xs font-semibold text-gray-500">총 스트로크</div>
             </div>
-            <div className="text-3xl font-bold text-purple-600">{summary.totalStrokeCount}회</div>
+            <div className="text-3xl font-bold text-purple-600">
+              {summary.totalStrokeCount}회
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
@@ -508,60 +557,33 @@ export function AnalysisReportPage({
           </div>
         </div>
 
-        {/* AI 챗봇 섹션 */}
+        {/* ✅ AI 브리핑 섹션 (채팅 대신 요약 리포트) */}
         <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg mb-6">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-2 mb-4">
             <Bot className="size-5 text-blue-600" />
-            <h3 className="font-bold text-gray-800">AI 코치와 대화하기</h3>
+            <h3 className="font-bold text-gray-800">AI 브리핑</h3>
           </div>
 
-          <div className="h-80 overflow-y-auto mb-4 space-y-3 p-4 bg-gray-50 rounded-xl">
-            {chatHistory.length === 0 && (
-              <p className="text-xs text-gray-300 text-center mt-30">
-                경기에 대해 궁금한 점을 물어보세요!
-                <br />
-                ( 예: "제 스매시 타이밍은 어땠나요?" )
-              </p>
-            )}
-            {chatHistory.map((chat, idx) => (
-              <div
-                key={idx}
-                className={`flex ${chat.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                    chat.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-white border border-gray-200 text-gray-800"
-                  }`}
-                >
-                  {chat.parts}
-                </div>
-              </div>
-            ))}
-            {isChatLoading && (
-              <div className="text-xs text-blue-500 animate-pulse">
-                Gemini 코치가 생각 중...
-              </div>
-            )}
-          </div>
+          {aiBriefingLoading && (
+            <div className="text-sm text-blue-600 animate-pulse">
+              AI가 리포트를 요약 중입니다...
+            </div>
+          )}
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="질문을 입력하세요..."
-              className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={isChatLoading}
-              className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-            >
-              <Send className="size-5" />
-            </button>
+          {aiBriefingError && (
+            <div className="text-sm text-red-600">
+              브리핑 생성 실패: {aiBriefingError}
+            </div>
+          )}
+
+          {!aiBriefingLoading && !aiBriefingError && (
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+              {aiBriefing ? aiBriefing : "AI 브리핑 데이터가 없습니다."}
+            </div>
+          )}
+
+          <div className="mt-3 text-[11px] text-gray-400">
+            * 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.
           </div>
         </div>
 
