@@ -23,6 +23,7 @@ import {
   Bar,
   Cell,
 } from "recharts";
+import ReactMarkdown from 'react-markdown';
 
 import { Header, type Page } from "./Header";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -476,20 +477,19 @@ ${coaching?.feedbackText ?? "(없음)"}
           <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
             <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-900">
               <ScatterIcon className="size-5 text-indigo-600" />
-              위치 산점도
+              셔틀콕 궤적 (예정)
             </h2>
 
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis type="number" dataKey="x" domain={[0, 100]} hide />
-                  <YAxis type="number" dataKey="y" domain={[0, 100]} hide />
-                  <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                  <Scatter name="위치" data={ui.positionData} fill="#60a5fa" fillOpacity={0.8} />
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
+            <div className="h-[280px] flex items-center justify-center border border-dashed border-gray-200 rounded-lg bg-gray-50">
+  <div className="text-center">
+    <div className="text-sm font-semibold text-gray-500 mb-1">
+      셔틀콕 궤적 시각화 영역
+    </div>
+    <div className="text-xs text-gray-400">
+      영상 분석 데이터를 기반으로 표시 예정
+    </div>
+  </div>
+</div>
           </div>
         </div>
 
@@ -577,9 +577,30 @@ ${coaching?.feedbackText ?? "(없음)"}
           )}
 
           {!aiBriefingLoading && !aiBriefingError && (
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-              {aiBriefing ? aiBriefing : "AI 브리핑 데이터가 없습니다."}
-            </div>
+           <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm text-gray-800 leading-relaxed">
+  {aiBriefing ? (
+    <ReactMarkdown
+      components={{
+        strong: ({ children }) => (
+          <strong className="font-bold text-blue-600">{children}</strong>
+        ),
+        li: ({ children }) => (
+          <li className="ml-4 list-disc">{children}</li>
+        ),
+        h1: ({ children }) => (
+          <h1 className="text-base font-bold mt-2 mb-1">{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-sm font-bold mt-2 mb-1">{children}</h2>
+        ),
+      }}
+    >
+      {aiBriefing}
+    </ReactMarkdown>
+  ) : (
+    "AI 브리핑 데이터가 없습니다."
+  )}
+</div>
           )}
 
           <div className="mt-3 text-[11px] text-gray-400">

@@ -9,9 +9,6 @@ import {
   Target,
   Clock,
   Activity,
-  FileText,
-  CheckSquare,
-  Plus,
 } from "lucide-react";
 import { Header, type Page } from "./Header";
 import {
@@ -53,15 +50,7 @@ export function VideoPlayerPage({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<
-    "all" | "score" | "rally" | "smash"
-  >("all");
-  const [memo, setMemo] = useState("");
-  const [todoList, setTodoList] = useState([
-    { id: 1, text: "스매시 타점 확인하기", completed: false },
-    { id: 2, text: "백핸드 드라이브 보완", completed: true },
-    { id: 3, text: "풋워크 속도 체크", completed: false },
-  ]);
+  const [activeFilter, setActiveFilter] = useState<"all" | "score" | "rally" | "smash">("all");
 
   // Video element Ref 및 꾹 누르기 상태 관리
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -86,38 +75,31 @@ export function VideoPlayerPage({
   // API-driven states
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null);
-  const [timelineEventsState, setTimelineEventsState] = useState<
-    ApiTimelineEvent[]
-  >([]);
+  const [timelineEventsState, setTimelineEventsState] = useState<ApiTimelineEvent[]>([]);
 
   const [duration, setDuration] = useState(0); // 비디오 총 길이 (초 단위)
 
-  // API 데이터가 로드되면 duration 초기값 설정 (useEffect 안에 추가)
+  // API 데이터가 로드되면 duration 초기값 설정
   useEffect(() => {
     if (videoInfo?.duration) {
-      // API에서 초 단위(Seconds)로 준다면 그대로 사용
-      // 만약 밀리초(ms)라면 videoInfo.duration / 1000 해야 함 (보통은 초 단위)
       setDuration(videoInfo.duration);
     }
   }, [videoInfo]);
 
   const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds)) return "00:00"; // 값이 없거나 NaN이면 00:00 반환
-
-    const totalSeconds = Math.floor(seconds); // 소수점 버림
+    if (!seconds || isNaN(seconds)) return "00:00";
+    const totalSeconds = Math.floor(seconds);
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
-
-    // 00:00 형식으로 변환 (한 자리수일 때 앞에 0 붙임)
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // 타임라인 이벤트 클릭 시 해당 시간으로 점프하는 로직
+  // 타임라인 이벤트 클릭 시 해당 시간으로 점프
   const handleJumpTo = (time: number) => {
     setCurrentTime(time);
     if (videoRef.current) {
       videoRef.current.currentTime = time;
-      videoRef.current.play().catch(() => {}); // 이동 후 바로 재생 (선택 사항)
+      videoRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
   };
@@ -140,7 +122,6 @@ export function VideoPlayerPage({
     const rect = progressBarRef.current.getBoundingClientRect();
     const hoverX = e.clientX - rect.left;
     const percentage = Math.max(0, Math.min(hoverX / rect.width, 1));
-
     setHoverPosition(percentage * 100);
     setHoverTime(percentage * duration);
   };
@@ -148,13 +129,13 @@ export function VideoPlayerPage({
   const handleMouseEnter = () => setIsHovering(true);
   const handleMouseLeave = () => setIsHovering(false);
 
-  // 재생바 클릭 및 드래그 시작 시점
+  // 재생바 클릭 및 드래그 시작
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
     setWasPlaying(isPlaying);
 
     if (videoRef.current) {
-      videoRef.current.pause(); // 드래그 중 부드러운 이동을 위해 영상 일시정지
+      videoRef.current.pause();
       setIsPlaying(false);
     }
 
@@ -164,7 +145,6 @@ export function VideoPlayerPage({
       videoRef.current.currentTime = newTime;
     }
 
-    // 클릭 즉시 툴팁 위치 동기화
     if (progressBarRef.current && duration) {
       const rect = progressBarRef.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
@@ -174,7 +154,7 @@ export function VideoPlayerPage({
     }
   };
 
-  // 드래그 중일 때 처리
+  // 드래그 중
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging) return;
@@ -183,7 +163,6 @@ export function VideoPlayerPage({
       if (videoRef.current) {
         videoRef.current.currentTime = newTime;
       }
-      // 드래그 중에도 툴팁이 마우스를 따라다니도록 업데이트
       if (progressBarRef.current && duration) {
         const rect = progressBarRef.current.getBoundingClientRect();
         const hoverX = e.clientX - rect.left;
@@ -195,19 +174,17 @@ export function VideoPlayerPage({
     [isDragging, calculateTimeFromMouse, duration],
   );
 
-  // 마우스 뗐을 때 (드래그 종료) 처리
+  // 드래그 종료
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
-
-    // 드래그 시작 전에 재생 중이었다면 다시 재생
     if (wasPlaying && videoRef.current) {
       videoRef.current.play();
       setIsPlaying(true);
     }
   }, [isDragging, wasPlaying]);
 
-  // 전역 마우스 이벤트 등록 (마우스가 재생바를 벗어나도 드래그 유지되도록)
+  // 전역 마우스 이벤트 등록
   useEffect(() => {
     if (isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
@@ -223,14 +200,10 @@ export function VideoPlayerPage({
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const togglePlay = () => {
-    if (preventClick.current) return; // 꾹 누르기 직후의 클릭 무시
-
+    if (preventClick.current) return;
     if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play().catch(() => {});
-      }
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play().catch(() => {});
       setIsPlaying(!isPlaying);
     }
   };
@@ -244,69 +217,48 @@ export function VideoPlayerPage({
       setIsSpeedUp(true);
 
       if (videoRef.current) {
-        videoRef.current.playbackRate = 2.0; // 2배속 적용
+        videoRef.current.playbackRate = 2.0;
         if (!isPlaying) {
           videoRef.current.play().catch(() => {});
           setIsPlaying(true);
         }
       }
-    }, 300); // 0.3초 누르면 발동
+    }, 300);
   };
 
   // 영상 마우스 떼기/벗어남 (원래 속도)
   const handleVideoPointerUpOrLeave = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
     if (isLongPressing.current) {
       isLongPressing.current = false;
       setIsSpeedUp(false);
+      if (videoRef.current) videoRef.current.playbackRate = playbackRate;
 
-      if (videoRef.current) {
-        videoRef.current.playbackRate = playbackRate; // 원래 배속으로 복원
-      }
-
-      // 꾹 누르기 끝난 후 바로 재생/일시정지(onClick)가 발동되는 것 방지
       setTimeout(() => {
         preventClick.current = false;
       }, 50);
     }
   };
 
-  // 배속 메뉴에서 속도 선택 시 처리 함수
   const handlePlaybackRateChange = (rate: number) => {
     setPlaybackRate(rate);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = rate;
-    }
-    setShowSpeedMenu(false); // 선택 후 메뉴 닫기
+    if (videoRef.current) videoRef.current.playbackRate = rate;
+    setShowSpeedMenu(false);
   };
 
-  // 10초 앞/뒤로 건너뛰기 함수
   const handleSkip = (amount: number) => {
     if (videoRef.current) {
       const currentVideoDuration = duration || videoRef.current.duration;
-      // 0초와 전체 길이 사이를 벗어나지 않도록 처리
-      const newTime = Math.max(
-        0,
-        Math.min(videoRef.current.currentTime + amount, currentVideoDuration),
-      );
-
+      const newTime = Math.max(0, Math.min(videoRef.current.currentTime + amount, currentVideoDuration));
       videoRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     }
   };
 
-  // 유튜브처럼 키보드 단축키 지원 (좌우 방향키, 스페이스바)
+  // 키보드 단축키 지원
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 메모장(textarea)에 글씨를 입력 중일 때는 단축키가 먹히지 않도록 방지
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
         case "ArrowLeft":
@@ -316,7 +268,7 @@ export function VideoPlayerPage({
           handleSkip(10);
           break;
         case " ":
-          e.preventDefault(); // 스페이스바 누를 때 화면이 아래로 내려가는 현상 방지
+          e.preventDefault();
           togglePlay();
           break;
       }
@@ -326,10 +278,8 @@ export function VideoPlayerPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
-  // 카테고리 매핑 함수
-  const getHighlightCategory = (
-    type: string,
-  ): "score" | "rally" | "smash" | "default" => {
+  // 카테고리 매핑
+  const getHighlightCategory = (type: string): "score" | "rally" | "smash" | "default" => {
     switch (type) {
       case "득점":
         return "score";
@@ -340,14 +290,6 @@ export function VideoPlayerPage({
       default:
         return "default";
     }
-  };
-
-  const toggleTodo = (id: number) => {
-    setTodoList(
-      todoList.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo,
-      ),
-    );
   };
 
   const getHighlightIcon = (type: string) => {
@@ -376,7 +318,7 @@ export function VideoPlayerPage({
     }
   };
 
-  // 타임라인 이벤트를 하이라이트 형태로 변환하는 로직
+  // 타임라인 이벤트 -> 하이라이트 변환
   const derivedHighlights = useMemo(() => {
     return timelineEventsState
       .map((e) => {
@@ -398,10 +340,12 @@ export function VideoPlayerPage({
     return getHighlightCategory(e.type) === activeFilter;
   });
 
+  // 데이터 로드
   useEffect(() => {
     let mounted = true;
     setIsLoading(true);
     setError(null);
+
     fetchVideoDetail(videoId)
       .then((data) => {
         if (!mounted) return;
@@ -417,6 +361,7 @@ export function VideoPlayerPage({
         if (!mounted) return;
         setIsLoading(false);
       });
+
     return () => {
       mounted = false;
     };
@@ -442,16 +387,19 @@ export function VideoPlayerPage({
         >
           ← 돌아가기
         </button>
+
         <h1 className="text-2xl font-bold mb-4">
           {videoInfo?.title ?? "영상 불러오는 중..."}
         </h1>
+
+        {/* ✅ 핵심: grid 아이템을 VIDEO / TIMELINE / CONTROLS / SKELETON 로 분리 */}
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Video Player */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Video */}
+          {/* =======================
+              1) VIDEO (좌측 상단)
+             ======================= */}
+          <div className="lg:col-span-2">
             <div className="bg-black rounded-xl overflow-hidden aspect-video shadow-lg relative">
               <div className="w-full h-full flex items-center justify-center">
-                {" "}
                 {/* Video Overlay */}
                 {isLoading ? (
                   <div className="w-full h-full flex items-center justify-center">
@@ -465,32 +413,25 @@ export function VideoPlayerPage({
                   </div>
                 ) : (
                   <>
-                    {/* 1. 실제 비디오 태그 추가 */}
                     <video
                       ref={videoRef}
                       src={videoInfo?.videoUrl}
                       className="w-full h-full object-contain bg-black cursor-pointer"
                       onTimeUpdate={(e) => {
-                        // 드래그 중일 때는 onTimeUpdate가 currentTime을 덮어쓰지 않게 방지
-                        if (!isDragging) {
-                          setCurrentTime(e.currentTarget.currentTime);
-                        }
+                        if (!isDragging) setCurrentTime(e.currentTarget.currentTime);
                       }}
-                      // 2. 영상 메타데이터 로드 시 duration 업데이트 (API 값이 없을 때 대비)
                       onLoadedMetadata={(e) => {
-                        if (!videoInfo?.duration) {
-                          setDuration(e.currentTarget.duration);
-                        }
+                        if (!videoInfo?.duration) setDuration(e.currentTarget.duration);
                       }}
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => setIsPlaying(false)}
-                      onClick={togglePlay} // 화면 클릭 시 재생/일시정지
+                      onClick={togglePlay}
                       onPointerDown={handleVideoPointerDown}
                       onPointerUp={handleVideoPointerUpOrLeave}
                       onPointerLeave={handleVideoPointerUpOrLeave}
                     />
 
-                    {/* 2배속 재생 안내 오버레이 */}
+                    {/* 2배속 재생 안내 */}
                     {isSpeedUp && (
                       <div className="absolute top-6 right-6 flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white pointer-events-none animate-pulse z-50">
                         <span className="text-sm font-bold tracking-wide">
@@ -500,7 +441,7 @@ export function VideoPlayerPage({
                       </div>
                     )}
 
-                    {/* 2. Score Overlay (비디오 위에 띄움) */}
+                    {/* Score Overlay */}
                     <div className="absolute top-6 left-6 flex items-center gap-4 bg-black/40 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 text-white pointer-events-none">
                       <div className="text-center">
                         <div className="text-[10px] opacity-60 uppercase tracking-widest">
@@ -517,7 +458,7 @@ export function VideoPlayerPage({
                       </div>
                     </div>
 
-                    {/* 3. 중앙 재생 버튼 (일시정지 상태일 때만 보임) */}
+                    {/* 중앙 재생 버튼 */}
                     {!isPlaying && !isLoading && (
                       <div
                         className="absolute inset-0 flex items-center justify-center bg-black/10 cursor-pointer"
@@ -528,285 +469,56 @@ export function VideoPlayerPage({
                     )}
                   </>
                 )}
+
                 {/* Heatmap overlay */}
                 {showHeatmap && !isLoading && (
                   <div className="absolute inset-0 pointer-events-none">
                     <svg className="w-full h-full">
-                      {/* Mock heatmap circles */}
-                      <circle
-                        cx="30%"
-                        cy="40%"
-                        r="60"
-                        fill="rgba(255, 0, 0, 0.3)"
-                      />
-                      <circle
-                        cx="50%"
-                        cy="50%"
-                        r="80"
-                        fill="rgba(255, 100, 0, 0.4)"
-                      />
-                      <circle
-                        cx="70%"
-                        cy="60%"
-                        r="50"
-                        fill="rgba(255, 200, 0, 0.3)"
-                      />
+                      <circle cx="30%" cy="40%" r="60" fill="rgba(255, 0, 0, 0.3)" />
+                      <circle cx="50%" cy="50%" r="80" fill="rgba(255, 100, 0, 0.4)" />
+                      <circle cx="70%" cy="60%" r="50" fill="rgba(255, 200, 0, 0.3)" />
                     </svg>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Controls */}
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-              {/* Progress bar */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-sm text-gray-500 mb-2 font-medium">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-                {/* Progress bar Container (툴팁 포함 구조로 변경) */}
-                <div
-                  ref={progressBarRef}
-                  className="relative py-2 cursor-pointer group" // py-2를 줘서 클릭 판정(Hit Area)을 좀 더 넓혔습니다.
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleProgressMouseMove}
-                  onMouseEnter={handleMouseEnter}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  {/* Tooltip */}
-                  {(isHovering || isDragging) && (
-                    <div
-                      className="absolute -top-7 -translate-x-1/2 bg-gray-900 text-white text-[11px] font-bold px-2 py-1 rounded shadow-md z-50 pointer-events-none transition-opacity"
-                      style={{ left: `${hoverPosition}%` }}
-                    >
-                      {formatTime(hoverTime)}
-                    </div>
-                  )}
-
-                  {/* 실제 재생 바 */}
-                  <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`absolute left-0 top-0 h-full bg-blue-600 ${
-                        isDragging
-                          ? ""
-                          : "transition-[width] duration-[250ms] ease-linear"
-                      }`}
-                      style={{
-                        width: `${(duration ? currentTime / duration : 0) * 100}%`,
-                      }}
-                    />
-                    {/* Highlight markers */}
-                    {derivedHighlights.map((h, idx) => (
-                      <div
-                        // 혹시 모를 key 중복 방지 위해 idx 추가
-                        key={h.id || idx}
-                        // 마커 위에서 드래그 끊김 방지
-                        className={`absolute top-0 w-1 h-full pointer-events-none ${getHighlightColor(
-                          h.type,
-                        )}`}
-                        style={{
-                          left: `${duration ? (h.time / duration) * 100 : 0}%`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Playback controls */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setShowHeatmap(!showHeatmap)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
-                        showHeatmap
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Activity className="size-4" />
-                      히트맵 {showHeatmap ? "끄기" : "켜기"}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    {/* 10초 뒤로 가기 버튼 */}
-                    <button
-                      onClick={() => handleSkip(-10)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <SkipBack className="size-6" />
-                    </button>
-                    <button
-                      onClick={togglePlay} // 재생/일시정지 토글
-                      className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
-                    >
-                      {isPlaying ? (
-                        <Pause className="size-8" />
-                      ) : (
-                        <Play className="size-8" />
-                      )}
-                    </button>
-                    {/* 10초 앞으로 가기 버튼 */}
-                    <button
-                      onClick={() => handleSkip(10)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <SkipForward className="size-6" />
-                    </button>
-                  </div>
-
-                  <div className="relative w-[120px] text-right flex justify-end">
-                    <button
-                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                      className="text-sm font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-md transition-all flex items-center gap-1"
-                    >
-                      {isSpeedUp
-                        ? "2.0x Speed"
-                        : `${playbackRate === 1 ? "1.0" : playbackRate}x Speed`}
-                    </button>
-
-                    {/* 배속 선택 메뉴 팝업 (위에서 아래로 높은 배속 배치) */}
-                    {showSpeedMenu && (
-                      <>
-                        {/* 메뉴 바깥을 클릭하면 닫히도록 하는 투명 배경 */}
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setShowSpeedMenu(false)}
-                        />
-                        <div className="absolute bottom-full right-0 mb-2 w-28 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
-                          <div className="py-1 flex flex-col">
-                            {[2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.25].map(
-                              (rate) => (
-                                <button
-                                  key={rate}
-                                  onClick={() => handlePlaybackRateChange(rate)}
-                                  className={`w-full px-4 py-2 text-sm text-left transition-colors ${
-                                    playbackRate === rate
-                                      ? "bg-blue-50 text-blue-600 font-bold"
-                                      : "text-gray-700 hover:bg-gray-50"
-                                  }`}
-                                >
-                                  {rate === 1.0 ? "보통" : `${rate}x`}
-                                </button>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Match Memo & Checklist */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Memo Card */}
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex flex-col h-full">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      <FileText className="size-4 text-blue-600" />
-                      경기 분석 메모
-                    </h3>
-                    <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                      자동 저장됨
-                    </span>
-                  </div>
-                  <textarea
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    className="flex-1 w-full min-h-[120px] p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none"
-                    placeholder="영상을 보며 분석한 내용이나 개선할 점을 자유롭게 적어보세요..."
-                  />
-                </div>
-
-                {/* Checklist Card */}
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      <CheckSquare className="size-4 text-green-600" />
-                      훈련 체크리스트
-                    </h3>
-                    <button className="p-1 hover:bg-gray-100 rounded-md transition-colors">
-                      <Plus className="size-4 text-gray-400" />
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {todoList.map((todo) => (
-                      <div
-                        key={todo.id}
-                        onClick={() => toggleTodo(todo.id)}
-                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                          todo.completed
-                            ? "bg-gray-50 border-transparent opacity-60"
-                            : "bg-white border-gray-100 hover:border-blue-200 hover:shadow-sm"
-                        }`}
-                      >
-                        <div
-                          className={`size-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                            todo.completed
-                              ? "bg-blue-600 border-blue-600"
-                              : "border-gray-200"
-                          }`}
-                        >
-                          {todo.completed && (
-                            <CheckSquare className="size-3 text-white" />
-                          )}
-                        </div>
-                        <span
-                          className={`text-sm font-medium transition-all ${
-                            todo.completed
-                              ? "text-gray-500 line-through"
-                              : "text-gray-700"
-                          }`}
-                        >
-                          {todo.text}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Sidebar - Merged Highlights & Timeline */}
-          <div className="space-y-6">
+          {/* =======================
+              2) TIMELINE (우측, 영상+툴바 높이 영역 고정)
+              - row-span-2 로 "영상 + 컨트롤" 높이를 같이 먹게 함
+             ======================= */}
+          <div className="space-y-6 lg:row-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-[calc(100vh-160px)] sticky top-24">
               <div className="p-6 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">
-                    분석 타임라인
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-900">분석 타임라인</h2>
                   <div className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    총 {derivedHighlights.length + timelineEventsState.length}개
-                    구간
+                    총 {derivedHighlights.length + timelineEventsState.length}개 구간
                   </div>
                 </div>
 
                 {/* Filters */}
                 <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {(["all", "score", "rally", "smash"] as const).map(
-                    (filter) => (
-                      <button
-                        key={filter}
-                        onClick={() => setActiveFilter(filter)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                          activeFilter === filter
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }`}
-                      >
-                        {filter === "all"
-                          ? "전체"
-                          : filter === "score"
-                            ? "득점"
-                            : filter === "rally"
-                              ? "랠리"
-                              : "스매시"}
-                      </button>
-                    ),
-                  )}
+                  {(["all", "score", "rally", "smash"] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setActiveFilter(filter)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                        activeFilter === filter
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {filter === "all"
+                        ? "전체"
+                        : filter === "score"
+                          ? "득점"
+                          : filter === "rally"
+                            ? "랠리"
+                            : "스매시"}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -816,12 +528,9 @@ export function VideoPlayerPage({
                     <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-100" />
 
                     <div className="space-y-6 relative">
-                      {/* Timeline Style Events */}
                       {filteredTimelineEvents.length > 0 ? (
                         filteredTimelineEvents.map((event, index) => {
-                          const isHighlight = derivedHighlights.find(
-                            (h) => h.time === event.timestamp,
-                          );
+                          const isHighlight = derivedHighlights.find((h) => h.time === event.timestamp);
                           return (
                             <div
                               key={index}
@@ -836,9 +545,7 @@ export function VideoPlayerPage({
                                 }`}
                               >
                                 {isHighlight ? (
-                                  <div className="text-white">
-                                    {getHighlightIcon(isHighlight.type)}
-                                  </div>
+                                  <div className="text-white">{getHighlightIcon(isHighlight.type)}</div>
                                 ) : (
                                   <div className="size-2 bg-gray-400 rounded-full" />
                                 )}
@@ -847,18 +554,24 @@ export function VideoPlayerPage({
                               <div className="flex-1 pb-2">
                                 <div className="flex items-center justify-between mb-0.5">
                                   <span
-                                    className={`text-xs font-bold ${isHighlight ? "text-blue-600" : "text-gray-400"}`}
+                                    className={`text-xs font-bold ${
+                                      isHighlight ? "text-blue-600" : "text-gray-400"
+                                    }`}
                                   >
                                     {formatTime(event.timestamp)}
                                   </span>
+
                                   {isHighlight && (
                                     <span
-                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold text-white uppercase ${getHighlightColor(isHighlight.type)}`}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold text-white uppercase ${getHighlightColor(
+                                        isHighlight.type,
+                                      )}`}
                                     >
                                       {isHighlight.label}
                                     </span>
                                   )}
                                 </div>
+
                                 <div className="text-sm font-semibold text-gray-900 leading-tight">
                                   {event.type}
                                 </div>
@@ -885,6 +598,175 @@ export function VideoPlayerPage({
                 <p className="text-[10px] text-gray-400 text-center uppercase tracking-widest font-bold">
                   AI 분석 데이터 기준 타임라인
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* =======================
+              3) CONTROLS (좌측, 영상 바로 아래)
+             ======================= */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              {/* Progress bar */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-sm text-gray-500 mb-2 font-medium">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+
+                {/* Progress bar Container */}
+                <div
+                  ref={progressBarRef}
+                  className="relative py-2 cursor-pointer group"
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleProgressMouseMove}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  {/* Tooltip */}
+                  {(isHovering || isDragging) && (
+                    <div
+                      className="absolute -top-7 -translate-x-1/2 bg-gray-900 text-white text-[11px] font-bold px-2 py-1 rounded shadow-md z-50 pointer-events-none transition-opacity"
+                      style={{ left: `${hoverPosition}%` }}
+                    >
+                      {formatTime(hoverTime)}
+                    </div>
+                  )}
+
+                  <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`absolute left-0 top-0 h-full bg-blue-600 ${
+                        isDragging ? "" : "transition-[width] duration-[250ms] ease-linear"
+                      }`}
+                      style={{
+                        width: `${(duration ? currentTime / duration : 0) * 100}%`,
+                      }}
+                    />
+
+                    {/* Highlight markers */}
+                    {derivedHighlights.map((h, idx) => (
+                      <div
+                        key={h.id || idx}
+                        className={`absolute top-0 w-1 h-full pointer-events-none ${getHighlightColor(h.type)}`}
+                        style={{
+                          left: `${duration ? (h.time / duration) * 100 : 0}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Playback controls */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
+                        showHeatmap
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-100"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      <Activity className="size-4" />
+                      히트맵 {showHeatmap ? "끄기" : "켜기"}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => handleSkip(-10)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <SkipBack className="size-6" />
+                    </button>
+
+                    <button
+                      onClick={togglePlay}
+                      className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
+                    >
+                      {isPlaying ? <Pause className="size-8" /> : <Play className="size-8" />}
+                    </button>
+
+                    <button
+                      onClick={() => handleSkip(10)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <SkipForward className="size-6" />
+                    </button>
+                  </div>
+
+                  {/* Speed menu */}
+                  <div className="relative w-[120px] text-right flex justify-end">
+                    <button
+                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                      className="text-sm font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-md transition-all flex items-center gap-1"
+                    >
+                      {isSpeedUp ? "2.0x Speed" : `${playbackRate === 1 ? "1.0" : playbackRate}x Speed`}
+                    </button>
+
+                    {showSpeedMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowSpeedMenu(false)}
+                        />
+                        <div className="absolute bottom-full right-0 mb-2 w-28 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                          <div className="py-1 flex flex-col">
+                            {[2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.25].map((rate) => (
+                              <button
+                                key={rate}
+                                onClick={() => handlePlaybackRateChange(rate)}
+                                className={`w-full px-4 py-2 text-sm text-left transition-colors ${
+                                  playbackRate === rate
+                                    ? "bg-blue-50 text-blue-600 font-bold"
+                                    : "text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                {rate === 1.0 ? "보통" : `${rate}x`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* =======================
+              4) SKELETON (맨 아래, 좌측 크게 / 영상과 비슷한 크기)
+             ======================= */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Activity className="size-4 text-indigo-600" />
+                  스켈레톤 분석 영상
+                </h3>
+                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
+                  준비 중
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 overflow-hidden">
+                <div className="aspect-video flex items-center justify-center">
+                  <div className="text-center px-6">
+                    <div className="text-sm font-semibold text-gray-600 mb-1">
+                      스켈레톤 오버레이/분석 영상 영역
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      분석 완료 후 스켈레톤 렌더링 결과를 이 영역에 표시할 예정입니다.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
+                <span>Overlay: OFF</span>
+                <span>Model: -</span>
+                <span>FPS: -</span>
               </div>
             </div>
           </div>
