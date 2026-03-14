@@ -8,7 +8,11 @@ import {
   Trophy,
   Target,
   Clock,
-  Activity,
+  Eye,
+  Loader2,
+  ChevronLeft,
+  Sparkles,
+  Video,
 } from "lucide-react";
 import { Header, type Page } from "./Header";
 import {
@@ -17,6 +21,10 @@ import {
   type MatchSummary,
   type ApiTimelineEvent,
 } from "../api/videoApi";
+
+// ─────────────────────────────────────────────────────────────
+// 타입 정의
+// ─────────────────────────────────────────────────────────────
 
 interface VideoPlayerPageProps {
   videoId: string;
@@ -33,11 +41,30 @@ interface Highlight {
   description: string;
 }
 
-interface TimelineEvent {
-  time: number;
-  type: string;
-  description: string;
-}
+type VideoMode = "original" | "analyzed";
+
+// ─────────────────────────────────────────────────────────────
+// ★ 목업 데이터 (백엔드 연동 전 AI 분석 영상 테스트용)
+//
+// 백엔드 VideoDetailResponse.data.videoInfo 에
+//   originalVideoUrl / analyzedVideoUrl 필드가 추가되면
+//   ── MOCK START ~ MOCK END 블록을 삭제하고
+//   실제 API 값을 사용하세요.
+// ─────────────────────────────────────────────────────────────
+
+/** ── MOCK START ─────────────────────────────────────────────
+ * 공개 샘플 영상 두 개를 원본/분석 영상으로 사용합니다.
+ * 실제 스켈레톤 분석 영상 URL로 교체하거나, 연동 완료 후 제거하세요.
+ */
+const MOCK_ORIGINAL_URL =
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+const MOCK_ANALYZED_URL =
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4";
+/** ── MOCK END ───────────────────────────────────────────────*/
+
+// ─────────────────────────────────────────────────────────────
+// 컴포넌트
+// ─────────────────────────────────────────────────────────────
 
 export function VideoPlayerPage({
   videoId,
@@ -45,146 +72,324 @@ export function VideoPlayerPage({
   onNavigate,
   onLogout,
 }: VideoPlayerPageProps) {
+  // ── 재생 상태 ────────────────────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | "score" | "rally" | "smash">("all");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "score" | "rally" | "smash"
+  >("all");
 
-  // Video element Ref 및 꾹 누르기 상태 관리
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // ── Dual Video ───────────────────────────────────────────────
+  const [videoMode, setVideoMode] = useState<VideoMode>("original");
+  const [analyzedReady, setAnalyzedReady] = useState(false);
+
+  const originalVideoRef = useRef<HTMLVideoElement>(null);
+  const analyzedVideoRef = useRef<HTMLVideoElement>(null);
+  const activeVideoRef =
+    videoMode === "original" ? originalVideoRef : analyzedVideoRef;
+
+  // ─────────────────────────────────────────────────────────────
+  // ★ Duration 분리 관리 (진행바 범위 초과 버그 방지)
+  //
+  // 원본/분석 영상의 duration을 각각 독립 state로 관리.
+  // AI 분석 영상은 원본보다 길면 안 되므로,
+  // analyzedDuration 은 항상 originalDuration 이하로 클램핑한다.
+  // ─────────────────────────────────────────────────────────────
+  const [originalDuration, setOriginalDuration] = useState(0);
+  const [rawAnalyzedDuration, setRawAnalyzedDuration] = useState(0);
+
+  /**
+   * ★ AI 분석 영상의 실효 duration.
+   * 원본보다 길 수 없음 — 원본 duration을 상한으로 클램핑.
+   * (목업 영상이 원본보다 길어도 진행바·시간 표시가 원본 범위 내로 유지됨)
+   */
+  const analyzedDuration =
+    originalDuration > 0 && rawAnalyzedDuration > originalDuration
+      ? originalDuration
+      : rawAnalyzedDuration;
+
+  /** 현재 활성 영상의 duration */
+  const activeDuration =
+    videoMode === "original" ? originalDuration : analyzedDuration;
+
+  // ── 꾹 누르기 (2배속) ────────────────────────────────────────
   const [isSpeedUp, setIsSpeedUp] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const isLongPressing = useRef(false);
   const preventClick = useRef(false);
 
-  const [playbackRate, setPlaybackRate] = useState(1.0); // 현재 선택된 배속
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false); // 배속 메뉴 팝업 표시 여부
+  // ── 배속 메뉴 ────────────────────────────────────────────────
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
 
-  // 재생바 드래그 관련 상태 및 Ref 추가
+  // ── 프로그레스 바 ─────────────────────────────────────────────
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [wasPlaying, setWasPlaying] = useState(false);
-
-  // 재생바 hover 시간 툴팁 관련 상태 추가
   const [hoverTime, setHoverTime] = useState(0);
   const [hoverPosition, setHoverPosition] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
 
-  // API-driven states
+  // ── API 데이터 ───────────────────────────────────────────────
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null);
-  const [timelineEventsState, setTimelineEventsState] = useState<ApiTimelineEvent[]>([]);
+  const [timelineEventsState, setTimelineEventsState] = useState<
+    ApiTimelineEvent[]
+  >([]);
 
-  const [duration, setDuration] = useState(0); // 비디오 총 길이 (초 단위)
+  // ── 영상 URL 결정 ─────────────────────────────────────────────
+  /**
+   * TODO: 백엔드 DTO 연동 후 아래 두 줄로 교체하고 MOCK 상수 삭제
+   *   const originalVideoUrl = videoInfo?.originalVideoUrl ?? null;
+   *   const analyzedVideoUrl = videoInfo?.analyzedVideoUrl ?? null;
+   */
+  /** ── MOCK 주입 (백엔드 연동 전 임시) — 연동 후 아래 두 줄 삭제 */
+  const originalVideoUrl: string | null =
+    videoInfo?.videoUrl ?? MOCK_ORIGINAL_URL;
+  const analyzedVideoUrl: string | null = MOCK_ANALYZED_URL;
+  /** ── MOCK END ── */
 
-  // API 데이터가 로드되면 duration 초기값 설정
+  const isAnalysisAvailable = !!analyzedVideoUrl;
+
+  // ─────────────────────────────────────────────────────────────
+  // API 로드
+  // ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (videoInfo?.duration) {
-      setDuration(videoInfo.duration);
-    }
-  }, [videoInfo]);
+    let mounted = true;
+    setIsLoading(true);
+    setError(null);
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds)) return "00:00";
-    const totalSeconds = Math.floor(seconds);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    fetchVideoDetail(videoId)
+      .then((data) => {
+        if (!mounted) return;
+        setVideoInfo(data.videoInfo);
+        setMatchSummary(data.matchSummary);
+        setTimelineEventsState(data.timelineEvents || []);
+        if (data.videoInfo?.duration)
+          setOriginalDuration(data.videoInfo.duration);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setError(err?.message || "데이터를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [videoId]);
+
+  // ─────────────────────────────────────────────────────────────
+  // ★ 심리스 토글 — currentTime·rate·paused 즉시 동기화
+  // ─────────────────────────────────────────────────────────────
+
+  const switchVideoMode = useCallback(
+    (nextMode: VideoMode) => {
+      const fromRef =
+        videoMode === "original" ? originalVideoRef : analyzedVideoRef;
+      const toRef =
+        nextMode === "original" ? originalVideoRef : analyzedVideoRef;
+
+      if (!fromRef.current || !toRef.current) return;
+
+      const snapshotTime = fromRef.current.currentTime;
+      const snapshotRate = fromRef.current.playbackRate;
+      const wasActuallyPlaying = !fromRef.current.paused;
+
+      fromRef.current.pause();
+
+      // ★ 대상 영상 duration으로 클램핑 (분석 영상이 짧을 경우 대비)
+      const targetDur = toRef.current.duration || 0;
+      const clamped =
+        targetDur > 0 ? Math.min(snapshotTime, targetDur) : snapshotTime;
+
+      toRef.current.currentTime = clamped;
+      toRef.current.playbackRate = snapshotRate;
+      setCurrentTime(clamped);
+
+      if (wasActuallyPlaying) {
+        if (nextMode === "original") {
+          toRef.current.play().catch(() => {});
+        } else if (analyzedReady) {
+          toRef.current.play().catch(() => {});
+        }
+      }
+
+      setVideoMode(nextMode);
+    },
+    [videoMode, analyzedReady],
+  );
+
+  const handleToggle = () => {
+    if (!isAnalysisAvailable) return;
+    switchVideoMode(videoMode === "original" ? "analyzed" : "original");
   };
 
-  // 타임라인 이벤트 클릭 시 해당 시간으로 점프
+  // ─────────────────────────────────────────────────────────────
+  // 통합 재생 컨트롤
+  // ─────────────────────────────────────────────────────────────
+
+  const syncBothVideos = useCallback(
+    (action: (el: HTMLVideoElement) => void) => {
+      [originalVideoRef, analyzedVideoRef].forEach((ref) => {
+        if (ref.current) action(ref.current);
+      });
+    },
+    [],
+  );
+
+  const togglePlay = () => {
+    if (preventClick.current) return;
+    const active = activeVideoRef.current;
+    if (!active) return;
+    if (isPlaying) {
+      syncBothVideos((el) => el.pause());
+    } else {
+      active.play().catch(() => {});
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleVideoPointerDown = () => {
+    preventClick.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressing.current = true;
+      preventClick.current = true;
+      setIsSpeedUp(true);
+      syncBothVideos((el) => {
+        el.playbackRate = 2.0;
+      });
+      if (!isPlaying && activeVideoRef.current) {
+        activeVideoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    }, 300);
+  };
+
+  const handleVideoPointerUpOrLeave = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (isLongPressing.current) {
+      isLongPressing.current = false;
+      setIsSpeedUp(false);
+      syncBothVideos((el) => {
+        el.playbackRate = playbackRate;
+      });
+      setTimeout(() => {
+        preventClick.current = false;
+      }, 50);
+    }
+  };
+
+  const handlePlaybackRateChange = (rate: number) => {
+    setPlaybackRate(rate);
+    syncBothVideos((el) => {
+      el.playbackRate = rate;
+    });
+    setShowSpeedMenu(false);
+  };
+
+  const handleSkip = (amount: number) => {
+    const active = activeVideoRef.current;
+    if (!active) return;
+    const eff = activeDuration || active.duration;
+    const newTime = Math.max(0, Math.min(active.currentTime + amount, eff));
+    syncBothVideos((el) => {
+      el.currentTime = newTime;
+    });
+    setCurrentTime(newTime);
+  };
+
   const handleJumpTo = (time: number) => {
-    setCurrentTime(time);
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      videoRef.current.play().catch(() => {});
+    const clamped = activeDuration > 0 ? Math.min(time, activeDuration) : time;
+    setCurrentTime(clamped);
+    syncBothVideos((el) => {
+      el.currentTime = clamped;
+    });
+    if (activeVideoRef.current) {
+      activeVideoRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
   };
 
-  // 마우스 X 좌표를 영상 시간으로 변환하는 헬퍼 함수
+  // ── 프로그레스 바 드래그 ─────────────────────────────────────
+
   const calculateTimeFromMouse = useCallback(
     (clientX: number) => {
-      if (!progressBarRef.current || !duration) return 0;
+      if (!progressBarRef.current || !activeDuration) return 0;
       const rect = progressBarRef.current.getBoundingClientRect();
-      const clickX = clientX - rect.left;
-      const percentage = Math.max(0, Math.min(clickX / rect.width, 1));
-      return percentage * duration;
+      return (
+        Math.max(0, Math.min((clientX - rect.left) / rect.width, 1)) *
+        activeDuration
+      );
     },
-    [duration],
+    [activeDuration],
   );
 
-  // 재생바에 마우스를 올렸을 때 툴팁 위치와 시간 계산
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!progressBarRef.current || !duration) return;
+    if (!progressBarRef.current || !activeDuration) return;
     const rect = progressBarRef.current.getBoundingClientRect();
-    const hoverX = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(hoverX / rect.width, 1));
-    setHoverPosition(percentage * 100);
-    setHoverTime(percentage * duration);
+    const pct = Math.max(0, Math.min((e.clientX - rect.left) / rect.width, 1));
+    setHoverPosition(pct * 100);
+    setHoverTime(pct * activeDuration);
   };
 
-  const handleMouseEnter = () => setIsHovering(true);
-  const handleMouseLeave = () => setIsHovering(false);
-
-  // 재생바 클릭 및 드래그 시작
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
     setWasPlaying(isPlaying);
-
-    if (videoRef.current) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
-
+    syncBothVideos((el) => el.pause());
+    setIsPlaying(false);
     const newTime = calculateTimeFromMouse(e.clientX);
     setCurrentTime(newTime);
-    if (videoRef.current) {
-      videoRef.current.currentTime = newTime;
-    }
-
-    if (progressBarRef.current && duration) {
+    syncBothVideos((el) => {
+      el.currentTime = newTime;
+    });
+    if (progressBarRef.current && activeDuration) {
       const rect = progressBarRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const percentage = Math.max(0, Math.min(clickX / rect.width, 1));
-      setHoverPosition(percentage * 100);
-      setHoverTime(percentage * duration);
+      const pct = Math.max(
+        0,
+        Math.min((e.clientX - rect.left) / rect.width, 1),
+      );
+      setHoverPosition(pct * 100);
+      setHoverTime(pct * activeDuration);
     }
   };
 
-  // 드래그 중
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging) return;
       const newTime = calculateTimeFromMouse(e.clientX);
       setCurrentTime(newTime);
-      if (videoRef.current) {
-        videoRef.current.currentTime = newTime;
-      }
-      if (progressBarRef.current && duration) {
+      syncBothVideos((el) => {
+        el.currentTime = newTime;
+      });
+      if (progressBarRef.current && activeDuration) {
         const rect = progressBarRef.current.getBoundingClientRect();
-        const hoverX = e.clientX - rect.left;
-        const percentage = Math.max(0, Math.min(hoverX / rect.width, 1));
-        setHoverPosition(percentage * 100);
-        setHoverTime(percentage * duration);
+        const pct = Math.max(
+          0,
+          Math.min((e.clientX - rect.left) / rect.width, 1),
+        );
+        setHoverPosition(pct * 100);
+        setHoverTime(pct * activeDuration);
       }
     },
-    [isDragging, calculateTimeFromMouse, duration],
+    [isDragging, calculateTimeFromMouse, activeDuration, syncBothVideos],
   );
 
-  // 드래그 종료
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
-    if (wasPlaying && videoRef.current) {
-      videoRef.current.play();
+    if (wasPlaying && activeVideoRef.current) {
+      activeVideoRef.current.play();
       setIsPlaying(true);
     }
-  }, [isDragging, wasPlaying]);
+  }, [isDragging, wasPlaying, activeVideoRef]);
 
-  // 전역 마우스 이벤트 등록
   useEffect(() => {
     if (isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
@@ -199,67 +404,13 @@ export function VideoPlayerPage({
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  const togglePlay = () => {
-    if (preventClick.current) return;
-    if (videoRef.current) {
-      if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play().catch(() => {});
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  // 영상 꾹 누르기 시작 (2배속)
-  const handleVideoPointerDown = () => {
-    preventClick.current = false;
-    longPressTimer.current = setTimeout(() => {
-      isLongPressing.current = true;
-      preventClick.current = true;
-      setIsSpeedUp(true);
-
-      if (videoRef.current) {
-        videoRef.current.playbackRate = 2.0;
-        if (!isPlaying) {
-          videoRef.current.play().catch(() => {});
-          setIsPlaying(true);
-        }
-      }
-    }, 300);
-  };
-
-  // 영상 마우스 떼기/벗어남 (원래 속도)
-  const handleVideoPointerUpOrLeave = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    if (isLongPressing.current) {
-      isLongPressing.current = false;
-      setIsSpeedUp(false);
-      if (videoRef.current) videoRef.current.playbackRate = playbackRate;
-
-      setTimeout(() => {
-        preventClick.current = false;
-      }, 50);
-    }
-  };
-
-  const handlePlaybackRateChange = (rate: number) => {
-    setPlaybackRate(rate);
-    if (videoRef.current) videoRef.current.playbackRate = rate;
-    setShowSpeedMenu(false);
-  };
-
-  const handleSkip = (amount: number) => {
-    if (videoRef.current) {
-      const currentVideoDuration = duration || videoRef.current.duration;
-      const newTime = Math.max(0, Math.min(videoRef.current.currentTime + amount, currentVideoDuration));
-      videoRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
-
-  // 키보드 단축키 지원
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
       switch (e.key) {
         case "ArrowLeft":
           handleSkip(-10);
@@ -273,13 +424,25 @@ export function VideoPlayerPage({
           break;
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
-  // 카테고리 매핑
-  const getHighlightCategory = (type: string): "score" | "rally" | "smash" | "default" => {
+  // ─────────────────────────────────────────────────────────────
+  // 유틸리티
+  // ─────────────────────────────────────────────────────────────
+
+  const formatTime = (s: number) => {
+    if (!s || isNaN(s)) return "0:00";
+    const total = Math.floor(s);
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const getHighlightCategory = (
+    type: string,
+  ): "score" | "rally" | "smash" | "default" => {
     switch (type) {
       case "득점":
         return "score";
@@ -295,30 +458,58 @@ export function VideoPlayerPage({
   const getHighlightIcon = (type: string) => {
     switch (type) {
       case "score":
-        return <Trophy className="size-4" />;
+        return <Trophy className="size-3.5" />;
       case "rally":
-        return <Target className="size-4" />;
+        return <Target className="size-3.5" />;
       case "smash":
-        return <Zap className="size-4" />;
+        return <Zap className="size-3.5" />;
       default:
-        return <Clock className="size-4" />;
+        return <Clock className="size-3.5" />;
     }
   };
 
-  const getHighlightColor = (type: string) => {
+  const getCategoryStyle = (category: string) => {
+    switch (category) {
+      case "score":
+        return {
+          dot: "bg-amber-400",
+          badge: "bg-amber-50 text-amber-700 border-amber-200",
+          icon: "text-amber-500",
+        };
+      case "rally":
+        return {
+          dot: "bg-violet-400",
+          badge: "bg-violet-50 text-violet-700 border-violet-200",
+          icon: "text-violet-500",
+        };
+      case "smash":
+        return {
+          dot: "bg-rose-400",
+          badge: "bg-rose-50 text-rose-700 border-rose-200",
+          icon: "text-rose-500",
+        };
+      default:
+        return {
+          dot: "bg-sky-400",
+          badge: "bg-sky-50 text-sky-700 border-sky-200",
+          icon: "text-sky-500",
+        };
+    }
+  };
+
+  const getProgressMarkerColor = (type: string) => {
     switch (type) {
       case "score":
-        return "bg-yellow-500";
+        return "bg-amber-400";
       case "rally":
-        return "bg-purple-500";
+        return "bg-violet-400";
       case "smash":
-        return "bg-red-500";
+        return "bg-rose-400";
       default:
-        return "bg-blue-500";
+        return "bg-sky-400";
     }
   };
 
-  // 타임라인 이벤트 -> 하이라이트 변환
   const derivedHighlights = useMemo(() => {
     return timelineEventsState
       .map((e) => {
@@ -340,39 +531,21 @@ export function VideoPlayerPage({
     return getHighlightCategory(e.type) === activeFilter;
   });
 
-  // 데이터 로드
-  useEffect(() => {
-    let mounted = true;
-    setIsLoading(true);
-    setError(null);
-
-    fetchVideoDetail(videoId)
-      .then((data) => {
-        if (!mounted) return;
-        setVideoInfo(data.videoInfo);
-        setMatchSummary(data.matchSummary);
-        setTimelineEventsState(data.timelineEvents || []);
-      })
-      .catch((err) => {
-        if (!mounted) return;
-        setError(err?.message || "데이터를 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setIsLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [videoId]);
-
   const scoreLeft = matchSummary?.matchScore?.split(":")[0] ?? "-";
   const scoreRight = matchSummary?.matchScore?.split(":")[1] ?? "-";
 
+  // 진행 퍼센트 (0~100, 절대 초과 안 함)
+  const progressPct =
+    activeDuration > 0
+      ? Math.min((currentTime / activeDuration) * 100, 100)
+      : 0;
+
+  // ─────────────────────────────────────────────────────────────
+  // 렌더링
+  // ─────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <Header
         currentPage="video"
         onNavigate={onNavigate}
@@ -380,397 +553,526 @@ export function VideoPlayerPage({
         hasSelectedVideo={true}
       />
 
-      <div className="container mx-auto px-6 py-8">
-        <button
-          onClick={onBack}
-          className="mb-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm"
-        >
-          ← 돌아가기
-        </button>
+      <div className="container mx-auto px-6 py-6">
+        {/* ── 페이지 헤더 ───────────────────────────────────────── */}
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={onBack}
+            className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-all shadow-sm"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
+              RallyTrack / 영상 분석
+            </p>
+            <h1 className="text-xl font-bold text-gray-900 leading-tight">
+              {videoInfo?.title ?? "영상 불러오는 중..."}
+            </h1>
+          </div>
+        </div>
 
-        <h1 className="text-2xl font-bold mb-4">
-          {videoInfo?.title ?? "영상 불러오는 중..."}
-        </h1>
+        {/* ── 메인 그리드 ───────────────────────────────────────── */}
+        <div className="grid lg:grid-cols-3 gap-6 items-start">
+          {/* ══════════════════════════════════════════════════════
+              1) 좌측: 영상 + 컨트롤
+             ══════════════════════════════════════════════════════ */}
+          <div className="lg:col-span-2 flex flex-col gap-4">
+            {/* ── 영상 박스 상단 헤더 (제목 레이블 + 토글) ──────── */}
+            <div className="flex items-center justify-between px-1">
+              {/* 현재 모드 레이블 */}
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    videoMode === "analyzed" ? "bg-amber-400" : "bg-emerald-400"
+                  } shadow-sm`}
+                />
+                <span className="text-sm font-semibold text-gray-600">
+                  {videoMode === "analyzed" ? "AI 분석 영상" : "원본 영상"}
+                </span>
+              </div>
 
-        {/* ✅ 핵심: grid 아이템을 VIDEO / TIMELINE / CONTROLS / SKELETON 로 분리 */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* =======================
-              1) VIDEO (좌측 상단)
-             ======================= */}
-          <div className="lg:col-span-2">
-            <div className="bg-black rounded-xl overflow-hidden aspect-video shadow-lg relative">
-              <div className="w-full h-full flex items-center justify-center">
-                {/* Video Overlay */}
-                {isLoading ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white/50" />
-                  </div>
-                ) : error ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="bg-red-600/60 text-white px-4 py-2 rounded">
-                      {error}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <video
-                      ref={videoRef}
-                      src={videoInfo?.videoUrl}
-                      className="w-full h-full object-contain bg-black cursor-pointer"
-                      onTimeUpdate={(e) => {
-                        if (!isDragging) setCurrentTime(e.currentTarget.currentTime);
-                      }}
-                      onLoadedMetadata={(e) => {
-                        if (!videoInfo?.duration) setDuration(e.currentTarget.duration);
-                      }}
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
-                      onClick={togglePlay}
-                      onPointerDown={handleVideoPointerDown}
-                      onPointerUp={handleVideoPointerUpOrLeave}
-                      onPointerLeave={handleVideoPointerUpOrLeave}
+              {/* ★ AI 분석 토글 — 영상 박스 바로 위 우측 */}
+              <div className="relative group">
+                <button
+                  onClick={handleToggle}
+                  disabled={!isAnalysisAvailable}
+                  aria-label={
+                    !isAnalysisAvailable
+                      ? "AI 분석 진행 중..."
+                      : videoMode === "original"
+                        ? "AI 분석 영상으로 전환"
+                        : "원본 영상으로 전환"
+                  }
+                  className={`
+                    flex items-center gap-2 pl-2.5 pr-3.5 py-1.5 rounded-full
+                    text-xs font-semibold border transition-all duration-200 select-none
+                    ${
+                      !isAnalysisAvailable
+                        ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                        : videoMode === "analyzed"
+                          ? "bg-amber-400 border-amber-300 text-amber-900 shadow-md shadow-amber-200/50 hover:bg-amber-300"
+                          : "bg-white border-gray-200 text-gray-600 shadow-sm hover:border-gray-300 hover:shadow"
+                    }
+                  `}
+                >
+                  {/* 토글 트랙 */}
+                  <span
+                    className={`
+                      relative inline-flex w-8 h-4 rounded-full transition-all duration-300 flex-shrink-0
+                      ${
+                        !isAnalysisAvailable
+                          ? "bg-gray-200"
+                          : videoMode === "analyzed"
+                            ? "bg-amber-700/60"
+                            : "bg-gray-200"
+                      }
+                    `}
+                  >
+                    <span
+                      className={`
+                        absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow
+                        transition-transform duration-300
+                        ${videoMode === "analyzed" ? "translate-x-4" : "translate-x-0"}
+                      `}
                     />
+                  </span>
 
-                    {/* 2배속 재생 안내 */}
-                    {isSpeedUp && (
-                      <div className="absolute top-6 right-6 flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white pointer-events-none animate-pulse z-50">
-                        <span className="text-sm font-bold tracking-wide">
-                          2배속 재생 중
-                        </span>
-                        <SkipForward className="size-4" />
-                      </div>
-                    )}
+                  {!isAnalysisAvailable ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      <span>분석 중</span>
+                    </>
+                  ) : videoMode === "analyzed" ? (
+                    <>
+                      <Sparkles className="size-3" />
+                      <span>AI Analysis</span>
+                    </>
+                  ) : (
+                    <>
+                      <Video className="size-3" />
+                      <span>Original</span>
+                    </>
+                  )}
+                </button>
 
-                    {/* Score Overlay */}
-                    <div className="absolute top-6 left-6 flex items-center gap-4 bg-black/40 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 text-white pointer-events-none">
-                      <div className="text-center">
-                        <div className="text-[10px] opacity-60 uppercase tracking-widest">
-                          Team A
-                        </div>
-                        <div className="text-xl leading-none">{scoreLeft}</div>
+                {/* 비활성화 툴팁 */}
+                {!isAnalysisAvailable && (
+                  <div className="absolute right-0 top-full mt-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
+                    <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-xl">
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="size-3 animate-spin text-amber-400" />
+                        AI 분석 진행 중입니다. 잠시 후 이용 가능합니다.
                       </div>
-                      <div className="text-lg opacity-40">-</div>
-                      <div className="text-center">
-                        <div className="text-[10px] opacity-60 uppercase tracking-widest">
-                          Team B
-                        </div>
-                        <div className="text-xl leading-none">{scoreRight}</div>
-                      </div>
+                      <div className="absolute right-5 -top-1 w-2 h-2 bg-gray-900 rotate-45" />
                     </div>
-
-                    {/* 중앙 재생 버튼 */}
-                    {!isPlaying && !isLoading && (
-                      <div
-                        className="absolute inset-0 flex items-center justify-center bg-black/10 cursor-pointer"
-                        onClick={togglePlay}
-                      >
-                        <Play className="size-20 text-white/50 hover:text-white/80 transition-colors" />
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Heatmap overlay */}
-                {showHeatmap && !isLoading && (
-                  <div className="absolute inset-0 pointer-events-none">
-                    <svg className="w-full h-full">
-                      <circle cx="30%" cy="40%" r="60" fill="rgba(255, 0, 0, 0.3)" />
-                      <circle cx="50%" cy="50%" r="80" fill="rgba(255, 100, 0, 0.4)" />
-                      <circle cx="70%" cy="60%" r="50" fill="rgba(255, 200, 0, 0.3)" />
-                    </svg>
                   </div>
                 )}
               </div>
             </div>
-          </div>
 
-          {/* =======================
-              2) TIMELINE (우측, 영상+툴바 높이 영역 고정)
-              - row-span-2 로 "영상 + 컨트롤" 높이를 같이 먹게 함
-             ======================= */}
-          <div className="space-y-6 lg:row-span-2">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-[calc(100vh-160px)] sticky top-24">
-              <div className="p-6 border-b border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">분석 타임라인</h2>
-                  <div className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    총 {derivedHighlights.length + timelineEventsState.length}개 구간
+            {/* ── 영상 컨테이너 ─────────────────────────────────── */}
+            <div className="rounded-2xl overflow-hidden aspect-video shadow-lg relative bg-[#111]">
+              {isLoading ? (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+                  <span className="text-white/50 text-xs">불러오는 중...</span>
+                </div>
+              ) : error ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-2 rounded-lg text-sm">
+                    {error}
                   </div>
                 </div>
+              ) : (
+                <>
+                  {/* 원본 영상 */}
+                  <video
+                    ref={originalVideoRef}
+                    src={originalVideoUrl ?? undefined}
+                    className={`absolute inset-0 w-full h-full object-contain cursor-pointer transition-opacity duration-200 ${
+                      videoMode === "original"
+                        ? "opacity-100 z-10"
+                        : "opacity-0 z-0 pointer-events-none"
+                    }`}
+                    onTimeUpdate={(e) => {
+                      if (videoMode === "original" && !isDragging)
+                        setCurrentTime(e.currentTarget.currentTime);
+                    }}
+                    onLoadedMetadata={(e) => {
+                      // ★ 원본 duration 전용 setter
+                      setOriginalDuration(e.currentTarget.duration);
+                    }}
+                    onPlay={() => {
+                      if (videoMode === "original") setIsPlaying(true);
+                    }}
+                    onPause={() => {
+                      if (videoMode === "original") setIsPlaying(false);
+                    }}
+                    onClick={togglePlay}
+                    onPointerDown={handleVideoPointerDown}
+                    onPointerUp={handleVideoPointerUpOrLeave}
+                    onPointerLeave={handleVideoPointerUpOrLeave}
+                  />
 
-                {/* Filters */}
-                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {(["all", "score", "rally", "smash"] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setActiveFilter(filter)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                        activeFilter === filter
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {filter === "all"
-                        ? "전체"
-                        : filter === "score"
-                          ? "득점"
-                          : filter === "rally"
-                            ? "랠리"
-                            : "스매시"}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {/* AI 분석 영상 */}
+                  <video
+                    ref={analyzedVideoRef}
+                    src={analyzedVideoUrl ?? undefined}
+                    className={`absolute inset-0 w-full h-full object-contain cursor-pointer transition-opacity duration-200 ${
+                      videoMode === "analyzed"
+                        ? "opacity-100 z-10"
+                        : "opacity-0 z-0 pointer-events-none"
+                    }`}
+                    onTimeUpdate={(e) => {
+                      if (videoMode === "analyzed" && !isDragging)
+                        setCurrentTime(e.currentTarget.currentTime);
+                    }}
+                    onLoadedMetadata={(e) => {
+                      // ★ 분석 영상 raw duration 저장 (이후 원본 기준으로 클램핑됨)
+                      setRawAnalyzedDuration(e.currentTarget.duration);
+                    }}
+                    onCanPlay={() => {
+                      setAnalyzedReady(true);
+                      if (videoMode === "analyzed" && isPlaying) {
+                        analyzedVideoRef.current?.play().catch(() => {});
+                      }
+                    }}
+                    onPlay={() => {
+                      if (videoMode === "analyzed") setIsPlaying(true);
+                    }}
+                    onPause={() => {
+                      if (videoMode === "analyzed") setIsPlaying(false);
+                    }}
+                    onClick={togglePlay}
+                    onPointerDown={handleVideoPointerDown}
+                    onPointerUp={handleVideoPointerUpOrLeave}
+                    onPointerLeave={handleVideoPointerUpOrLeave}
+                  />
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                <div className="space-y-4">
-                  <div className="relative">
-                    <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-100" />
-
-                    <div className="space-y-6 relative">
-                      {filteredTimelineEvents.length > 0 ? (
-                        filteredTimelineEvents.map((event, index) => {
-                          const isHighlight = derivedHighlights.find((h) => h.time === event.timestamp);
-                          return (
-                            <div
-                              key={index}
-                              className="flex gap-4 group cursor-pointer"
-                              onClick={() => handleJumpTo(event.timestamp)}
-                            >
-                              <div
-                                className={`relative z-10 size-8 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-sm transition-transform group-hover:scale-110 ${
-                                  isHighlight
-                                    ? getHighlightColor(isHighlight.type)
-                                    : "bg-gray-200"
-                                }`}
-                              >
-                                {isHighlight ? (
-                                  <div className="text-white">{getHighlightIcon(isHighlight.type)}</div>
-                                ) : (
-                                  <div className="size-2 bg-gray-400 rounded-full" />
-                                )}
-                              </div>
-
-                              <div className="flex-1 pb-2">
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <span
-                                    className={`text-xs font-bold ${
-                                      isHighlight ? "text-blue-600" : "text-gray-400"
-                                    }`}
-                                  >
-                                    {formatTime(event.timestamp)}
-                                  </span>
-
-                                  {isHighlight && (
-                                    <span
-                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold text-white uppercase ${getHighlightColor(
-                                        isHighlight.type,
-                                      )}`}
-                                    >
-                                      {isHighlight.label}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="text-sm font-semibold text-gray-900 leading-tight">
-                                  {event.type}
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {event.description}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="py-12 text-center">
-                          <p className="text-sm text-gray-400">
-                            해당 카테고리의 분석 결과가 없습니다.
-                          </p>
-                        </div>
-                      )}
+                  {/* 2배속 배지 */}
+                  {isSpeedUp && (
+                    <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full text-white/90 pointer-events-none z-50">
+                      <SkipForward className="size-3.5" />
+                      <span className="text-xs font-bold tracking-wide">
+                        2× 재생
+                      </span>
                     </div>
-                  </div>
-                </div>
-              </div>
+                  )}
 
-              <div className="p-4 bg-gray-50 border-t border-gray-100 rounded-b-xl">
-                <p className="text-[10px] text-gray-400 text-center uppercase tracking-widest font-bold">
-                  AI 분석 데이터 기준 타임라인
-                </p>
-              </div>
+                  {/* AI 모드 워터마크 */}
+                  {videoMode === "analyzed" && (
+                    <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-amber-400/90 backdrop-blur-sm px-2.5 py-1 rounded-full pointer-events-none z-20">
+                      <Sparkles className="size-3 text-amber-900" />
+                      <span className="text-xs font-bold text-amber-900">
+                        AI Analysis
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          </div>
 
-          {/* =======================
-              3) CONTROLS (좌측, 영상 바로 아래)
-             ======================= */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-              {/* Progress bar */}
+            {/* ── 컨트롤 패널 ───────────────────────────────────── */}
+            <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
+              {/* 시간 + 프로그레스 바 */}
               <div className="mb-4">
-                <div className="flex items-center justify-between text-sm text-gray-500 mb-2 font-medium">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
+                {/* 시간 */}
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-mono font-medium text-gray-500 tabular-nums">
+                    {formatTime(currentTime)}
+                  </span>
+                  <span className="text-xs font-mono text-gray-300 tabular-nums">
+                    {formatTime(activeDuration)}
+                  </span>
                 </div>
 
-                {/* Progress bar Container */}
+                {/* 프로그레스 바 */}
                 <div
                   ref={progressBarRef}
-                  className="relative py-2 cursor-pointer group"
+                  className="relative h-1.5 rounded-full cursor-pointer group"
+                  style={{ backgroundColor: "#E5E7EB" }}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleProgressMouseMove}
-                  onMouseEnter={handleMouseEnter}
-                  onMouseLeave={handleMouseLeave}
+                  onMouseEnter={() => setIsHovering(true)}
+                  onMouseLeave={() => setIsHovering(false)}
                 >
-                  {/* Tooltip */}
-                  {(isHovering || isDragging) && (
+                  {/* hover 툴팁 */}
+                  {isHovering && activeDuration > 0 && (
                     <div
-                      className="absolute -top-7 -translate-x-1/2 bg-gray-900 text-white text-[11px] font-bold px-2 py-1 rounded shadow-md z-50 pointer-events-none transition-opacity"
+                      className="absolute -top-8 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded-md pointer-events-none z-10 font-mono shadow-lg"
                       style={{ left: `${hoverPosition}%` }}
                     >
                       {formatTime(hoverTime)}
                     </div>
                   )}
 
-                  <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                  {/* 버퍼 트랙 (시각적 depth) */}
+                  <div className="absolute inset-0 rounded-full bg-gray-200" />
+
+                  {/* 진행 게이지 */}
+                  <div
+                    className="absolute top-0 left-0 h-full rounded-full transition-none"
+                    style={{
+                      width: `${progressPct}%`,
+                      background:
+                        videoMode === "analyzed"
+                          ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
+                          : "linear-gradient(90deg, #3b82f6, #60a5fa)",
+                    }}
+                  />
+
+                  {/* 드래그 핸들 (hover 시 표시) */}
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md border-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                    style={{
+                      left: `${progressPct}%`,
+                      borderColor:
+                        videoMode === "analyzed" ? "#f59e0b" : "#3b82f6",
+                    }}
+                  />
+
+                  {/* 하이라이트 마커 */}
+                  {derivedHighlights.map((h, idx) => (
                     <div
-                      className={`absolute left-0 top-0 h-full bg-blue-600 ${
-                        isDragging ? "" : "transition-[width] duration-[250ms] ease-linear"
-                      }`}
+                      key={h.id || idx}
+                      className={`absolute top-1/2 -translate-y-1/2 w-0.5 h-3 rounded-full pointer-events-none ${getProgressMarkerColor(h.type)}`}
                       style={{
-                        width: `${(duration ? currentTime / duration : 0) * 100}%`,
+                        left: `${activeDuration > 0 ? (h.time / activeDuration) * 100 : 0}%`,
                       }}
                     />
+                  ))}
+                </div>
+              </div>
 
-                    {/* Highlight markers */}
-                    {derivedHighlights.map((h, idx) => (
+              {/* 재생 컨트롤 */}
+              <div className="flex items-center justify-between">
+                {/* 좌측 빈 영역 (균형) */}
+                <div className="w-28" />
+
+                {/* 중앙: 재생 컨트롤 */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleSkip(-10)}
+                    className="flex flex-col items-center justify-center w-9 h-9 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+                    title="-10초"
+                  >
+                    <SkipBack className="size-5" />
+                  </button>
+
+                  <button
+                    onClick={togglePlay}
+                    className="flex items-center justify-center w-12 h-12 rounded-2xl text-white transition-all active:scale-95 shadow-md"
+                    style={{
+                      background:
+                        videoMode === "analyzed"
+                          ? "linear-gradient(135deg, #f59e0b, #d97706)"
+                          : "linear-gradient(135deg, #3b82f6, #2563eb)",
+                      boxShadow:
+                        videoMode === "analyzed"
+                          ? "0 4px 14px rgba(245,158,11,0.35)"
+                          : "0 4px 14px rgba(59,130,246,0.35)",
+                    }}
+                  >
+                    {isPlaying ? (
+                      <Pause className="size-5" />
+                    ) : (
+                      <Play className="size-5 translate-x-0.5" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => handleSkip(10)}
+                    className="flex flex-col items-center justify-center w-9 h-9 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+                    title="+10초"
+                  >
+                    <SkipForward className="size-5" />
+                  </button>
+                </div>
+
+                {/* 우측: 배속 */}
+                <div className="relative w-28 flex justify-end">
+                  <button
+                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                    className="text-xs font-bold text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-all tabular-nums"
+                  >
+                    {isSpeedUp
+                      ? "2.0×"
+                      : `${playbackRate === 1 ? "1.0" : playbackRate}×`}
+                  </button>
+
+                  {showSpeedMenu && (
+                    <>
                       <div
-                        key={h.id || idx}
-                        className={`absolute top-0 w-1 h-full pointer-events-none ${getHighlightColor(h.type)}`}
-                        style={{
-                          left: `${duration ? (h.time / duration) * 100 : 0}%`,
-                        }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowSpeedMenu(false)}
                       />
+                      <div className="absolute bottom-full right-0 mb-2 w-24 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                        <div className="py-1">
+                          {[2.0, 1.5, 1.25, 1.0, 0.75, 0.5].map((rate) => (
+                            <button
+                              key={rate}
+                              onClick={() => handlePlaybackRateChange(rate)}
+                              className={`w-full px-3 py-2 text-xs text-left font-semibold transition-colors tabular-nums ${
+                                playbackRate === rate
+                                  ? "bg-blue-50 text-blue-600"
+                                  : "text-gray-600 hover:bg-gray-50"
+                              }`}
+                            >
+                              {rate === 1.0 ? "보통 (1×)" : `${rate}×`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* 좌측 끝 */}
+
+          {/* ══════════════════════════════════════════════════════
+              2) 우측: 스코어 + 타임라인
+             ══════════════════════════════════════════════════════ */}
+          <div className="lg:col-span-1">
+            <div
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden"
+              style={{ minHeight: "600px" }}
+            >
+              {/* ── 스코어 섹션 ──────────────────────────────────── */}
+              <div className="px-6 pt-6 pb-5 border-b border-gray-100">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em] mb-4">
+                  매치 스코어
+                </p>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-4xl font-black text-gray-900 tabular-nums leading-none">
+                      {scoreLeft}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-medium">
+                      Player A
+                    </span>
+                  </div>
+                  <span className="text-xl font-light text-gray-200 pb-4">
+                    :
+                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-4xl font-black text-gray-900 tabular-nums leading-none">
+                      {scoreRight}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-medium">
+                      Player B
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── 타임라인 섹션 ─────────────────────────────────── */}
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* 타임라인 헤더 */}
+                <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
+                  <h3 className="text-xs font-bold text-gray-900 uppercase tracking-[0.1em]">
+                    타임라인
+                  </h3>
+                  {/* 필터 탭 */}
+                  <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                    {(["all", "score", "rally", "smash"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setActiveFilter(f)}
+                        className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                          activeFilter === f
+                            ? "bg-white text-gray-800 shadow-sm"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {f === "all"
+                          ? "전체"
+                          : f === "score"
+                            ? "득점"
+                            : f === "rally"
+                              ? "랠리"
+                              : "스매시"}
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Playback controls */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setShowHeatmap(!showHeatmap)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
-                        showHeatmap
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-100"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Activity className="size-4" />
-                      히트맵 {showHeatmap ? "끄기" : "켜기"}
-                    </button>
-                  </div>
+                {/* 이벤트 목록 */}
+                <div className="flex-1 overflow-y-auto px-3 pb-4">
+                  {filteredTimelineEvents.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                        <Clock className="size-4 text-gray-400" />
+                      </div>
+                      <p className="text-sm text-gray-400 font-medium">
+                        이벤트가 없습니다
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {filteredTimelineEvents.map((event, idx) => {
+                        const category = getHighlightCategory(event.type);
+                        const style = getCategoryStyle(category);
+                        const isActive =
+                          activeDuration > 0 &&
+                          Math.abs(currentTime - event.timestamp) < 2;
 
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => handleSkip(-10)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <SkipBack className="size-6" />
-                    </button>
+                        return (
+                          <button
+                            key={event.eventId ?? idx}
+                            onClick={() => handleJumpTo(event.timestamp)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group ${
+                              isActive
+                                ? "bg-blue-50 border border-blue-100"
+                                : "hover:bg-gray-50 border border-transparent"
+                            }`}
+                          >
+                            {/* 아이콘 */}
+                            <span
+                              className={`flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg border ${style.badge} ${style.icon}`}
+                            >
+                              {getHighlightIcon(category)}
+                            </span>
 
-                    <button
-                      onClick={togglePlay}
-                      className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
-                    >
-                      {isPlaying ? <Pause className="size-8" /> : <Play className="size-8" />}
-                    </button>
+                            {/* 내용 */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold text-gray-800 truncate">
+                                  {event.title || event.type}
+                                </span>
+                                <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 tabular-nums">
+                                  {event.displayTime ||
+                                    formatTime(event.timestamp)}
+                                </span>
+                              </div>
+                              {event.description && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                                  {event.description}
+                                </p>
+                              )}
+                            </div>
 
-                    <button
-                      onClick={() => handleSkip(10)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <SkipForward className="size-6" />
-                    </button>
-                  </div>
-
-                  {/* Speed menu */}
-                  <div className="relative w-[120px] text-right flex justify-end">
-                    <button
-                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                      className="text-sm font-semibold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-md transition-all flex items-center gap-1"
-                    >
-                      {isSpeedUp ? "2.0x Speed" : `${playbackRate === 1 ? "1.0" : playbackRate}x Speed`}
-                    </button>
-
-                    {showSpeedMenu && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setShowSpeedMenu(false)}
-                        />
-                        <div className="absolute bottom-full right-0 mb-2 w-28 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
-                          <div className="py-1 flex flex-col">
-                            {[2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.25].map((rate) => (
-                              <button
-                                key={rate}
-                                onClick={() => handlePlaybackRateChange(rate)}
-                                className={`w-full px-4 py-2 text-sm text-left transition-colors ${
-                                  playbackRate === rate
-                                    ? "bg-blue-50 text-blue-600 font-bold"
-                                    : "text-gray-700 hover:bg-gray-50"
-                                }`}
-                              >
-                                {rate === 1.0 ? "보통" : `${rate}x`}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                            {/* 재생 화살표 */}
+                            <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="w-5 h-5 rounded-full bg-gray-900/8 flex items-center justify-center">
+                                <Play className="size-2.5 text-gray-500 translate-x-px" />
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
+              {/* 타임라인 끝 */}
             </div>
           </div>
-
-          {/* =======================
-              4) SKELETON (맨 아래, 좌측 크게 / 영상과 비슷한 크기)
-             ======================= */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Activity className="size-4 text-indigo-600" />
-                  스켈레톤 분석 영상
-                </h3>
-                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                  준비 중
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 overflow-hidden">
-                <div className="aspect-video flex items-center justify-center">
-                  <div className="text-center px-6">
-                    <div className="text-sm font-semibold text-gray-600 mb-1">
-                      스켈레톤 오버레이/분석 영상 영역
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      분석 완료 후 스켈레톤 렌더링 결과를 이 영역에 표시할 예정입니다.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-                <span>Overlay: OFF</span>
-                <span>Model: -</span>
-                <span>FPS: -</span>
-              </div>
-            </div>
-          </div>
+          {/* 우측 끝 */}
         </div>
+        {/* 그리드 끝 */}
       </div>
     </div>
   );
