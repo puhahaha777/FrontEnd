@@ -88,7 +88,7 @@ export function DashboardPage({
     return () => clearInterval(interval);
   }, [hasProcessingVideo, fetchData]);
 
-  // 영상 삭제 핸들러 API (임시)
+  // 영상 삭제 핸들러 API
   const handleDelete = async (id: string) => {
     // 임시 업로드 중인 파일 삭제 처리
     if (id.startsWith("temp-")) {

@@ -2,6 +2,7 @@ export interface VideoInfo {
   videoId: number;
   title: string;
   videoUrl: string;
+  skeletonVideoUrl?: string;
   thumbnailUrl: string;
   duration: number;
 }

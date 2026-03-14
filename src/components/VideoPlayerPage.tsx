@@ -148,7 +148,8 @@ export function VideoPlayerPage({
   /** ── MOCK 주입 (백엔드 연동 전 임시) — 연동 후 아래 두 줄 삭제 */
   const originalVideoUrl: string | null =
     videoInfo?.videoUrl ?? MOCK_ORIGINAL_URL;
-  const analyzedVideoUrl: string | null = MOCK_ANALYZED_URL;
+  const analyzedVideoUrl: string | null =
+    videoInfo?.skeletonVideoUrl || MOCK_ANALYZED_URL;
   /** ── MOCK END ── */
 
   const isAnalysisAvailable = !!analyzedVideoUrl;
