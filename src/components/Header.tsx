@@ -37,7 +37,7 @@ export function Header({
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-2 text-blue-600 font-bold italic tracking-tight">
+          <div className="flex items-center gap-2 text-blue-600 font-bold italic tracking-tight" onClick={() => onNavigate("dashboard")}>
             {/* Updated size for new SVG; removed vertical translation */}
             <img
               src="/RallyTrack.svg"

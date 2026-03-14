@@ -1,6 +1,9 @@
 import {ReportResponse} from "../types/reportpageType"
 
-// 🔹 2. API 호출 함수
+import { mockReport } from "../types/reportMock";
+
+//🔹 2. API 호출 함수 ✨✨✨✨
+/*
 export async function fetchReport(
   videoId: string | number
 ): Promise<ReportResponse> {
@@ -26,4 +29,14 @@ export async function fetchReport(
   }
 
   return (await res.json()) as ReportResponse;
+}
+
+// reportpageApi.ts
+*/
+export async function fetchReport(videoId: string) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(mockReport);
+    }, 500);
+  });
 }
