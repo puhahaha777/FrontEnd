@@ -136,16 +136,6 @@ export function VideoItem({
             <Trash2 className="size-5" />
           </button>
         </div>
-
-        {/* 진행률 바 (Processing 상태일 때만) */}
-        {isProcessing && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-50 overflow-hidden">
-            <div
-              className="h-full bg-indigo-500 w-1/3 rounded-full animate-bounce"
-              style={{ animationDuration: "3s" }}
-            ></div>
-          </div>
-        )}
       </div>
     </div>
   );
