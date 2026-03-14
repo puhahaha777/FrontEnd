@@ -517,9 +517,9 @@ export function VideoPlayerPage({
         const category = getHighlightCategory(e.type);
         if (category === "default") return null;
         return {
-          id: String(e.eventId ?? e.timestamp),
+          id: String(e.eventId ?? e.timestamp / 1000),
           type: category,
-          time: e.timestamp,
+          time: e.timestamp / 1000, // ms → s
           label: e.title || e.type,
           description: e.description || "",
         } as Highlight;
@@ -1018,12 +1018,12 @@ export function VideoPlayerPage({
                         const style = getCategoryStyle(category);
                         const isActive =
                           activeDuration > 0 &&
-                          Math.abs(currentTime - event.timestamp) < 2;
+                          Math.abs(currentTime - event.timestamp / 1000) < 2;
 
                         return (
                           <button
                             key={event.eventId ?? idx}
-                            onClick={() => handleJumpTo(event.timestamp)}
+                            onClick={() => handleJumpTo(event.timestamp / 1000)}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group ${
                               isActive
                                 ? "bg-blue-50 border border-blue-100"
@@ -1045,7 +1045,7 @@ export function VideoPlayerPage({
                                 </span>
                                 <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 tabular-nums">
                                   {event.displayTime ||
-                                    formatTime(event.timestamp)}
+                                    formatTime(event.timestamp / 1000)}
                                 </span>
                               </div>
                               {event.description && (
