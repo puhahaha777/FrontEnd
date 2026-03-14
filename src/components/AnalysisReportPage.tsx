@@ -28,6 +28,7 @@ import ReactMarkdown from "react-markdown";
 import { Header, type Page } from "./Header";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { fetchReport } from "../api/reportpageApi";
+import { mockReport} from "../types/reportMock"
 import type { ReportResponse } from "../types/reportpageType";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
@@ -329,7 +330,7 @@ function BadmintonHeatmapCourt({
             {[
               { label: "네트 앞",    pct: 28, color: "#ef4444" },
               { label: "미드 코트",  pct: 45, color: "#f97316" },
-              { label: "베이스라인", pct: 27, color: "#3b82f6" },
+              { label: "백 바운더리 라인", pct: 27, color: "#3b82f6" },
             ].map(({ label, pct, color }) => (
               <div key={label}>
                 <div className="flex justify-between mb-1">
@@ -414,7 +415,7 @@ export function AnalysisReportPage({
       try {
         setLoading(true);
         setErrorMsg(null);
-        const res = await fetchReport(videoId);
+        const res = mockReport //await fetchReport(videoId);
         if (!alive) return;
         setReport(res);
       } catch (e: any) {
@@ -520,7 +521,8 @@ ${coaching?.feedbackText ?? "(없음)"}
       position?.heatmapData?.map((p, idx) => ({
         x: p.x,
         y: p.y,
-        intensity: 0.45 + (idx % 5) * 0.1,
+        intensity: p.value ?? 0.45 + (idx % 5) * 0.1,
+    time: p.timeSec,
       })) ?? [];
 
     const strokeData = strokeTypes
