@@ -8,6 +8,8 @@ import {
   Target,
   X,
   Zap,
+  User,
+  Users,
 } from "lucide-react";
 import {
   RadarChart,
@@ -27,18 +29,23 @@ import ReactMarkdown from "react-markdown";
 
 import { Header, type Page } from "./Header";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { fetchReport } from "../api/reportpageApi";
-import { mockReport} from "../types/reportMock"
-import type { ReportResponse } from "../types/reportpageType";
+import { mockReport } from "../types/reportMock";
+import type {
+  ReportResponse,
+  PlayerKey,
+  HeatmapPoint,
+} from "../types/reportpageType";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config
+// ─────────────────────────────────────────────────────────────────────────────
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 const GEMINI_MODEL_CANDIDATES = ["gemini-2.5-flash", "models/gemini-2.5-flash"];
 
-if (!API_KEY) {
-  console.error(
-    "VITE_GEMINI_API_KEY is missing. Check .env.local and restart dev server.",
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Types / Props
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface AnalysisReportPageProps {
   videoId: string;
@@ -49,7 +56,7 @@ interface AnalysisReportPageProps {
 }
 
 type UiHeatmapZone = {
-  x: number;
+  x: number; // 0-100, normalised to court half
   y: number;
   intensity: number;
   time?: number;
@@ -57,7 +64,51 @@ type UiHeatmapZone = {
 
 type ExpandedPanel = "heatmap" | "stroke" | "ability" | "briefing" | null;
 
-// ─── Collapsible card wrapper ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Player Toggle
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLAYERS: { key: PlayerKey; label: string; short: string }[] = [
+  { key: "bottom", label: "Bottom Player", short: "Bot" },
+  { key: "top", label: "Top Player", short: "Top" },
+];
+
+function PlayerToggle({
+  active,
+  onChange,
+}: {
+  active: PlayerKey;
+  onChange: (k: PlayerKey) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+      {PLAYERS.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`
+            flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150
+            ${
+              active === key
+                ? key === "bottom"
+                  ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                  : "bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                : "text-gray-500 hover:text-gray-800"
+            }
+          `}
+        >
+          <User className="size-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collapsible card
+// ─────────────────────────────────────────────────────────────────────────────
+
 function CollapsibleCard({
   title,
   icon,
@@ -75,7 +126,6 @@ function CollapsibleCard({
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-      {/* Header row */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
         <button
           type="button"
@@ -92,7 +142,6 @@ function CollapsibleCard({
             }`}
           />
         </button>
-
         <button
           type="button"
           onClick={onExpand}
@@ -102,11 +151,11 @@ function CollapsibleCard({
           확대
         </button>
       </div>
-
-      {/* Collapsible body */}
       <div
         className={`transition-all duration-300 ease-in-out ${
-          open ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+          open
+            ? "max-h-[2000px] opacity-100"
+            : "max-h-0 opacity-0 overflow-hidden"
         }`}
       >
         <div className="p-6">{children}</div>
@@ -115,7 +164,10 @@ function CollapsibleCard({
   );
 }
 
-// ─── Modal ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Modal({
   open,
   title,
@@ -128,7 +180,6 @@ function Modal({
   children: React.ReactNode;
 }) {
   if (!open) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
@@ -144,7 +195,6 @@ function Modal({
             type="button"
             onClick={onClose}
             className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
-            aria-label="닫기"
           >
             <X className="size-4" />
           </button>
@@ -155,133 +205,157 @@ function Modal({
   );
 }
 
-// ─── Badminton Heatmap Court (portrait / top-down) ───────────────────────────
-//
-//  BWF-standard court layout (top-down view):
-//
-//   ┌──────────────────────────────────────┐  ← outer doubles boundary (OT)
-//   │                                      │  ← back alley (doubles only)
-//   ├──────────────────────────────────────┤  ← back boundary line (BT)
-//   │  │             │            │        │
-//   │  │  TOP LEFT   │  TOP RIGHT │        │  ← centre service line runs BT→SST
-//   │  │   SERVICE   │   SERVICE  │        │
-//   │  ├─────────────┴────────────┤        │  ← short service line top (SST)
-//   │  │                          │        │  ← mid-court: NO centre line here
-//   │  ══════════════════════════════      │  ← NET (bold)
-//   │  │                          │        │  ← mid-court: NO centre line here
-//   │  ├─────────────┬────────────┤        │  ← short service line bottom (SSB)
-//   │  │  BOT LEFT   │  BOT RIGHT │        │
-//   │  │   SERVICE   │   SERVICE  │        │  ← centre service line runs SSB→BB
-//   │  │             │            │        │
-//   ├──────────────────────────────────────┤  ← back boundary line (BB)
-//   │                                      │  ← back alley (doubles only)
-//   └──────────────────────────────────────┘  ← outer doubles boundary (OB)
-//
-// viewBox 500 × 1100. Real ratio 6.1 m × 13.4 m → aspect ~1:2.197
+// ─────────────────────────────────────────────────────────────────────────────
+// Badminton Heatmap Court
+// ─────────────────────────────────────────────────────────────────────────────
 
 const VW = 500;
 const VH = 1100;
 
-// Outer doubles boundary
-const OL = 50;
-const OR = 450;
-const OT = 40;
-const OB = 1060;
-const OW = OR - OL;   // 400
-const OH = OB - OT;   // 1020
-
-// Singles sidelines inset (6.1 m total → 5.18 m singles → 0.46 m each side → 7.54%)
-const SI = Math.round(OW * 0.0754);  // ≈ 30
-const SL = OL + SI;   // 80
-const SR = OR - SI;   // 420
-
-// Back boundary lines (0.76 m from back edge / 13.4 m → 5.67%)
-const BI = Math.round(OH * 0.0567);  // ≈ 58
-const BT = OT + BI;   // 98
-const BB = OB - BI;   // 1002
-
-// Net (exact vertical centre)
-const NY = OT + OH / 2;  // 550
-
-// Short service lines (1.98 m from net / 13.4 m → 14.78%)
-const SSO = Math.round(OH * 0.1478);  // ≈ 151
-const SST = NY - SSO;   // 399
-const SSB = NY + SSO;   // 701
-
-// Centre service line x
-const CX = (OL + OR) / 2;  // 250
+const OL = 50,
+  OR = 450,
+  OT = 40,
+  OB = 1060;
+const OW = OR - OL,
+  OH = OB - OT;
+const SI = Math.round(OW * 0.0754);
+const SL = OL + SI,
+  SR = OR - SI;
+const BI = Math.round(OH * 0.0567);
+const BT = OT + BI,
+  BB = OB - BI;
+const NY = OT + OH / 2;
+const SSO = Math.round(OH * 0.1478);
+const SST = NY - SSO,
+  SSB = NY + SSO;
+const CX = (OL + OR) / 2;
 
 function BadmintonHeatmapCourt({
   zones,
   selectedHeatmapPoint,
   setSelectedHeatmapPoint,
   onJumpToVideo,
+  playerKey,
   large = false,
 }: {
   zones: UiHeatmapZone[];
   selectedHeatmapPoint: number | null;
-  setSelectedHeatmapPoint: (index: number | null) => void;
-  onJumpToVideo: (time: number) => void;
+  setSelectedHeatmapPoint: (i: number | null) => void;
+  onJumpToVideo: (t: number) => void;
+  playerKey: PlayerKey;
   large?: boolean;
 }) {
   const LW = 2.5;
   const NW = 5;
 
+  const isBottom = playerKey === "bottom";
+  const accentColor = isBottom ? "#3b82f6" : "#6366f1"; // blue / indigo
+
   const courtSvg = (
-    <svg viewBox={`0 0 ${VW} ${VH}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
+    <svg
+      viewBox={`0 0 ${VW} ${VH}`}
+      className="h-full w-full"
+      preserveAspectRatio="xMidYMid meet"
+    >
       <defs>
         <linearGradient id="cg" x1="0" y1="0" x2="0.3" y2="1">
-          <stop offset="0%"   stopColor="#52954000" />
+          <stop offset="0%" stopColor="#52954000" />
           <stop offset="100%" stopColor="#3d7230ff" />
         </linearGradient>
         <filter id="cs">
           <feDropShadow dx="0" dy="4" stdDeviation="7" floodOpacity="0.20" />
         </filter>
+        {/* highlight band for active half */}
+        <linearGradient id="highlight-top" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accentColor} stopOpacity="0.08" />
+          <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="highlight-bottom" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accentColor} stopOpacity="0" />
+          <stop offset="100%" stopColor={accentColor} stopOpacity="0.08" />
+        </linearGradient>
       </defs>
 
       {/* background */}
       <rect width={VW} height={VH} fill="#eef4f0" />
 
-      {/* green court surface */}
-      <rect x={OL} y={OT} width={OW} height={OH} fill="#4a8c39" filter="url(#cs)" rx="2" />
-      {/* subtle highlight overlay */}
-      <rect x={OL} y={OT} width={OW} height={OH} fill="url(#cg)" rx="2" opacity="0.35" />
+      {/* court surface */}
+      <rect
+        x={OL}
+        y={OT}
+        width={OW}
+        height={OH}
+        fill="#4a8c39"
+        filter="url(#cs)"
+        rx="2"
+      />
+      <rect
+        x={OL}
+        y={OT}
+        width={OW}
+        height={OH}
+        fill="url(#cg)"
+        rx="2"
+        opacity="0.35"
+      />
 
-      {/* ── Lines (all white) ── */}
+      {/* active half highlight */}
+      {isBottom ? (
+        <rect
+          x={OL}
+          y={NY}
+          width={OW}
+          height={OH / 2}
+          fill={`url(#highlight-bottom)`}
+        />
+      ) : (
+        <rect
+          x={OL}
+          y={OT}
+          width={OW}
+          height={OH / 2}
+          fill={`url(#highlight-top)`}
+        />
+      )}
 
-      {/* 1 — outer doubles boundary */}
-      <rect x={OL} y={OT} width={OW} height={OH} fill="none" stroke="#fff" strokeWidth={LW} rx="2" />
-
-      {/* 2 — singles sidelines, full height */}
+      {/* Lines */}
+      <rect
+        x={OL}
+        y={OT}
+        width={OW}
+        height={OH}
+        fill="none"
+        stroke="#fff"
+        strokeWidth={LW}
+        rx="2"
+      />
       <line x1={SL} y1={OT} x2={SL} y2={OB} stroke="#fff" strokeWidth={LW} />
       <line x1={SR} y1={OT} x2={SR} y2={OB} stroke="#fff" strokeWidth={LW} />
-
-      {/* 3 — back boundary lines (doubles long service / back alley edge) */}
       <line x1={OL} y1={BT} x2={OR} y2={BT} stroke="#fff" strokeWidth={LW} />
       <line x1={OL} y1={BB} x2={OR} y2={BB} stroke="#fff" strokeWidth={LW} />
-
-      {/* 4 — net */}
+      {/* Net */}
       <line x1={OL} y1={NY} x2={OR} y2={NY} stroke="#fff" strokeWidth={NW} />
       <circle cx={OL} cy={NY} r="5" fill="#fff" />
       <circle cx={OR} cy={NY} r="5" fill="#fff" />
-
-      {/* 5 — short service lines (singles width only) */}
+      {/* Short service lines */}
       <line x1={SL} y1={SST} x2={SR} y2={SST} stroke="#fff" strokeWidth={LW} />
       <line x1={SL} y1={SSB} x2={SR} y2={SSB} stroke="#fff" strokeWidth={LW} />
+      {/* Centre service lines */}
+      <line x1={CX} y1={BT} x2={CX} y2={SST} stroke="#fff" strokeWidth={LW} />
+      <line x1={CX} y1={SSB} x2={CX} y2={BB} stroke="#fff" strokeWidth={LW} />
 
-      {/* 6 — centre service line: back boundary ↔ short service line (top & bottom) */}
-      {/*     ✅ CORRECT: centre line lives in the SERVICE BOX, NOT in mid-court        */}
-      <line x1={CX} y1={BT}  x2={CX} y2={SST} stroke="#fff" strokeWidth={LW} />
-      <line x1={CX} y1={SSB} x2={CX} y2={BB}  stroke="#fff" strokeWidth={LW} />
-
-      {/* ── Heatmap dots ── */}
+      {/* Heatmap dots */}
       {zones.map((zone, index) => {
+        // zone.x / zone.y already scaled to full court (0-100)
+        // x is vertical (top→bottom), y is horizontal (left→right)
         const px = OL + (zone.y / 100) * OW;
         const py = OT + (zone.x / 100) * OH;
-        const r  = 15 + zone.intensity * 20;
+        const r = 15 + zone.intensity * 20;
         const sel = selectedHeatmapPoint === index;
         return (
-          <g key={index} style={{ cursor: "pointer" }}
+          <g
+            key={index}
+            style={{ cursor: "pointer" }}
             onClick={() => {
               setSelectedHeatmapPoint(index);
               if (typeof zone.time === "number") onJumpToVideo(zone.time);
@@ -290,24 +364,164 @@ function BadmintonHeatmapCourt({
             <circle cx={px} cy={py} r={r * 2.5} fill="rgba(239,68,68,0.06)" />
             <circle cx={px} cy={py} r={r * 1.6} fill="rgba(239,68,68,0.13)" />
             <circle cx={px} cy={py} r={r * 1.1} fill="rgba(239,68,68,0.28)" />
-            <circle cx={px} cy={py} r={r}        fill="rgba(239,68,68,0.78)" />
-            <circle cx={px} cy={py} r={r * 0.35} fill="rgba(255,255,255,0.55)" />
-            {sel && <circle cx={px} cy={py} r={r + 9} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeDasharray="5 3" />}
+            <circle cx={px} cy={py} r={r} fill="rgba(239,68,68,0.78)" />
+            <circle
+              cx={px}
+              cy={py}
+              r={r * 0.35}
+              fill="rgba(255,255,255,0.55)"
+            />
+            {sel && (
+              <circle
+                cx={px}
+                cy={py}
+                r={r + 9}
+                fill="none"
+                stroke={accentColor}
+                strokeWidth="2.5"
+                strokeDasharray="5 3"
+              />
+            )}
           </g>
         );
       })}
 
-      {/* labels */}
-      <text x={CX} y={OT - 14} textAnchor="middle" fontSize="15" fill="#94a3b8" fontWeight="600" letterSpacing="3">OPP</text>
-      <text x={CX} y={OB + 24} textAnchor="middle" fontSize="15" fill="#64748b" fontWeight="700" letterSpacing="3">YOU</text>
+      {/* Player side labels */}
+      <text
+        x={CX}
+        y={OT - 14}
+        textAnchor="middle"
+        fontSize="15"
+        fill="#94a3b8"
+        fontWeight="600"
+        letterSpacing="3"
+      >
+        TOP
+      </text>
+      <text
+        x={CX}
+        y={OB + 24}
+        textAnchor="middle"
+        fontSize="15"
+        fill="#64748b"
+        fontWeight="700"
+        letterSpacing="3"
+      >
+        BOTTOM
+      </text>
+
+      {/* Active side indicator arrow */}
+      {isBottom ? (
+        <text
+          x={CX}
+          y={OB + 44}
+          textAnchor="middle"
+          fontSize="12"
+          fill={accentColor}
+          fontWeight="700"
+        >
+          ▲ 선택됨
+        </text>
+      ) : (
+        <text
+          x={CX}
+          y={OT - 28}
+          textAnchor="middle"
+          fontSize="12"
+          fill={accentColor}
+          fontWeight="700"
+        >
+          선택됨 ▼
+        </text>
+      )}
     </svg>
+  );
+
+  const infoPanel = (
+    <div className="flex flex-col justify-between py-1 min-w-0">
+      <div>
+        <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-widest">
+          포지션 분포
+        </p>
+        <div className="space-y-2.5">
+          {[
+            { label: "네트 앞", pct: 28, color: "#ef4444" },
+            { label: "미드 코트", pct: 45, color: "#f97316" },
+            { label: "백 바운더리", pct: 27, color: "#3b82f6" },
+          ].map(({ label, pct, color }) => (
+            <div key={label}>
+              <div className="flex justify-between mb-1">
+                <span className="text-[11px] font-medium text-gray-500">
+                  {label}
+                </span>
+                <span
+                  className="text-[11px] font-bold tabular-nums"
+                  style={{ color }}
+                >
+                  {pct}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-1.5 rounded-full"
+                  style={{ width: `${pct}%`, backgroundColor: color }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="mt-4 rounded-xl p-3"
+        style={{
+          background: `${accentColor}10`,
+          border: `1px solid ${accentColor}30`,
+        }}
+      >
+        <p
+          className="text-[11px] font-semibold mb-1"
+          style={{ color: accentColor }}
+        >
+          📍 히트 포인트
+        </p>
+        <p
+          className="text-[11px] leading-relaxed"
+          style={{ color: accentColor }}
+        >
+          {zones.length > 0
+            ? `총 ${zones.length}개 위치 기록됨. 점 클릭 시 영상 해당 구간으로 이동합니다.`
+            : "히트맵 데이터가 없습니다."}
+        </p>
+      </div>
+
+      <div className="mt-3 flex gap-3 flex-wrap">
+        {[
+          { label: "고빈도", color: "rgba(239,68,68,0.78)" },
+          { label: "중빈도", color: "rgba(239,68,68,0.42)" },
+          { label: "저빈도", color: "rgba(239,68,68,0.18)" },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: color }}
+            />
+            <span className="text-[10px] text-gray-400 font-medium">
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 
   if (large) {
     return (
       <div className="flex justify-center">
-        <div className="relative overflow-visible rounded-xl shadow-xl"
-          style={{ width: "min(300px, 100%)", aspectRatio: `${VW} / ${VH}` }}>
+        <div
+          className="relative overflow-visible rounded-xl shadow-xl"
+          style={{ width: "min(300px, 100%)", aspectRatio: `${VW} / ${VH}` }}
+        >
           {courtSvg}
         </div>
       </div>
@@ -316,81 +530,187 @@ function BadmintonHeatmapCourt({
 
   return (
     <div className="flex gap-6 items-stretch">
-      {/* Court */}
-      <div className="relative shrink-0 overflow-visible"
-        style={{ width: "min(175px, 36%)", aspectRatio: `${VW} / ${VH}` }}>
+      <div
+        className="relative shrink-0 overflow-visible"
+        style={{ width: "min(175px, 36%)", aspectRatio: `${VW} / ${VH}` }}
+      >
         {courtSvg}
       </div>
-
-      {/* Info panel */}
-      <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
-        <div>
-          <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-widest">포지션 분포</p>
-          <div className="space-y-2.5">
-            {[
-              { label: "네트 앞",    pct: 28, color: "#ef4444" },
-              { label: "미드 코트",  pct: 45, color: "#f97316" },
-              { label: "백 바운더리 라인", pct: 27, color: "#3b82f6" },
-            ].map(({ label, pct, color }) => (
-              <div key={label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-[11px] font-medium text-gray-500">{label}</span>
-                  <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{pct}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 p-3">
-          <p className="text-[11px] font-semibold text-blue-700 mb-1">📍 히트 포인트</p>
-          <p className="text-[11px] text-blue-500 leading-relaxed">
-            {zones.length > 0
-              ? `총 ${zones.length}개 위치 기록됨. 점 클릭 시 영상 해당 구간으로 이동합니다.`
-              : "히트맵 데이터가 없습니다."}
-          </p>
-        </div>
-
-        <div className="mt-3 flex gap-3 flex-wrap">
-          {[
-            { label: "고빈도", color: "rgba(239,68,68,0.78)" },
-            { label: "중빈도", color: "rgba(239,68,68,0.42)" },
-            { label: "저빈도", color: "rgba(239,68,68,0.18)" },
-          ].map(({ label, color }) => (
-            <div key={label} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-              <span className="text-[10px] text-gray-400 font-medium">{label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <div className="flex-1">{infoPanel}</div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Heatmap zone factory
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Markdown briefing ───────────────────────────────────────────────────────
+/**
+ * Converts raw HeatmapPoint[] (full 0-100 court coords) into UiHeatmapZone[].
+ *
+ * For "bottom" player: original data lives in x > ~50, we keep as-is.
+ * For "top"    player: original data lives in x < ~50, we keep as-is.
+ *
+ * The court SVG already maps x=0 → top edge, x=100 → bottom edge,
+ * so no coordinate flip is needed — the dots naturally appear in the
+ * correct half.
+ */
+function buildZones(points: HeatmapPoint[]): UiHeatmapZone[] {
+  return points.map((p) => ({
+    x: p.x,
+    y: p.y,
+    intensity: p.value ?? 0.5,
+    time: p.timeSec,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Markdown briefing
+// ─────────────────────────────────────────────────────────────────────────────
+
 function MarkdownBriefing({ content }: { content: string }) {
-  if (!content) return <p className="text-sm text-gray-400">AI 브리핑 데이터가 없습니다.</p>;
+  if (!content)
+    return (
+      <p className="text-sm text-gray-400">AI 브리핑 데이터가 없습니다.</p>
+    );
   return (
-    <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed
-                    [&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1
-                    [&_h2]:text-sm  [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1
-                    [&_h3]:text-sm  [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-0.5
-                    [&_p]:mb-2 [&_p]:text-gray-700
-                    [&_ul]:mb-2 [&_ul]:pl-4
-                    [&_li]:list-disc [&_li]:mb-0.5 [&_li]:text-gray-700
-                    [&_strong]:font-semibold [&_strong]:text-blue-700">
+    <div
+      className="prose prose-sm max-w-none text-gray-800 leading-relaxed
+        [&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1
+        [&_h2]:text-sm  [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1
+        [&_h3]:text-sm  [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-0.5
+        [&_p]:mb-2 [&_p]:text-gray-700
+        [&_ul]:mb-2 [&_ul]:pl-4
+        [&_li]:list-disc [&_li]:mb-0.5 [&_li]:text-gray-700
+        [&_strong]:font-semibold [&_strong]:text-blue-700"
+    >
       <ReactMarkdown>{content}</ReactMarkdown>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Grade system  (0-100 → A+/A/A-/B+/B/B-/C+/C/C-/D+/D/D-/E)
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+const GRADE_THRESHOLDS: {
+  min: number;
+  grade: string;
+  color: string;
+  bg: string;
+}[] = [
+  { min: 97, grade: "A+", color: "#059669", bg: "#d1fae5" },
+  { min: 93, grade: "A", color: "#059669", bg: "#d1fae5" },
+  { min: 90, grade: "A−", color: "#059669", bg: "#d1fae5" },
+  { min: 87, grade: "B+", color: "#2563eb", bg: "#dbeafe" },
+  { min: 83, grade: "B", color: "#2563eb", bg: "#dbeafe" },
+  { min: 80, grade: "B−", color: "#2563eb", bg: "#dbeafe" },
+  { min: 77, grade: "C+", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 73, grade: "C", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 70, grade: "C−", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 67, grade: "D+", color: "#d97706", bg: "#fef3c7" },
+  { min: 63, grade: "D", color: "#d97706", bg: "#fef3c7" },
+  { min: 60, grade: "D−", color: "#d97706", bg: "#fef3c7" },
+  { min: 0, grade: "E", color: "#dc2626", bg: "#fee2e2" },
+];
+
+function scoreToGrade(value: number): {
+  grade: string;
+  color: string;
+  bg: string;
+} {
+  for (const t of GRADE_THRESHOLDS) {
+    if (value >= t.min) return { grade: t.grade, color: t.color, bg: t.bg };
+  }
+  return { grade: "E", color: "#dc2626", bg: "#fee2e2" };
+}
+
+/** Bar fill width capped at 100% for visual display */
+function scoreToBarPct(value: number): number {
+  return Math.min(Math.max(value, 0), 100);
+}
+
+function AbilityGradeRow({
+  label,
+  value,
+  accentColor,
+}: {
+  label: string;
+  value: number;
+  accentColor: string;
+}) {
+  const { grade, color, bg } = scoreToGrade(value);
+  const pct = scoreToBarPct(value);
+
+  return (
+    <div className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-50 transition-colors">
+      {/* 등급 배지 */}
+      <span
+        className="shrink-0 w-8 text-center text-xs font-black py-0.5 rounded-md"
+        style={{ color, background: bg }}
+      >
+        {grade}
+      </span>
+      {/* 라벨 */}
+      <span className="shrink-0 w-12 text-xs font-semibold text-gray-600">
+        {label}
+      </span>
+      {/* 바 */}
+      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className="h-1.5 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: accentColor }}
+        />
+      </div>
+      {/* 점수 */}
+      <span className="shrink-0 w-8 text-right text-[10px] tabular-nums text-gray-400 font-medium">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// AbilityGradeCard — 모달용 (넓은 공간에서 사용)
+function AbilityGradeCard({
+  label,
+  value,
+  accentColor,
+}: {
+  label: string;
+  value: number;
+  accentColor: string;
+}) {
+  const { grade, color, bg } = scoreToGrade(value);
+  const pct = scoreToBarPct(value);
+
+  return (
+    <div className="flex flex-col gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-600">{label}</span>
+        <span
+          className="text-xs font-black px-2 py-0.5 rounded-md min-w-[32px] text-center"
+          style={{ color, background: bg }}
+        >
+          {grade}
+        </span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+        <div
+          className="h-1.5 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: accentColor }}
+        />
+      </div>
+      <span className="text-[10px] tabular-nums text-gray-400 self-end">
+        {value} / 100
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function AnalysisReportPage({
   videoId,
   onBack,
@@ -398,24 +718,33 @@ export function AnalysisReportPage({
   onNavigate,
   onLogout,
 }: AnalysisReportPageProps) {
-  const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<number | null>(null);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<
+    number | null
+  >(null);
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
+  const [activePlayer, setActivePlayer] = useState<PlayerKey>("bottom");
 
   const [report, setReport] = useState<ReportResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [aiBriefing, setAiBriefing] = useState<string>("");
-  const [aiBriefingLoading, setAiBriefingLoading] = useState(false);
-  const [aiBriefingError, setAiBriefingError] = useState<string | null>(null);
+  // Per-player AI briefing cache
+  const [briefings, setBriefings] = useState<Record<PlayerKey, string>>({
+    top: "",
+    bottom: "",
+  });
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
 
+  // ── Fetch report ──────────────────────────────────────────────────────────
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
         setErrorMsg(null);
-        const res = mockReport //await fetchReport(videoId);
+        const res = mockReport; // swap for real fetchReport(videoId)
         if (!alive) return;
         setReport(res);
       } catch (e: any) {
@@ -426,55 +755,64 @@ export function AnalysisReportPage({
         setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [videoId]);
 
+  // ── Generate AI briefing when player OR data changes ──────────────────────
   useEffect(() => {
     if (!report) return;
+    if (briefings[activePlayer]) return; // already generated
+
     let alive = true;
     (async () => {
       try {
-        setAiBriefingLoading(true);
-        setAiBriefingError(null);
+        setBriefingLoading(true);
+        setBriefingError(null);
 
-        if (!API_KEY) throw new Error("Gemini API Key가 없습니다. .env.local을 확인해주세요.");
+        if (!API_KEY) throw new Error("Gemini API Key가 없습니다.");
 
+        const playerData = report.data.players[activePlayer];
+        const ability = playerData.abilityMetrics;
+        const stroke = playerData.strokeTypes;
         const summary = report.data.summary;
-        const ability = report.data.abilityMetrics;
-        const stroke = report.data.strokeTypes;
-        const coaching = report.data.aiCoaching;
+        const coaching = playerData.aiCoaching;
+        const playerLabel =
+          activePlayer === "bottom" ? "Bottom Player" : "Top Player";
+
+        const playerStrokeTotal =
+          stroke.smash + stroke.clear + stroke.drop + stroke.drive;
 
         const prompt = `
 당신은 전문 배드민턴 코치입니다.
-아래 경기 분석 데이터를 기반으로 'AI 브리핑' 형태의 리포트 요약을 작성하세요.
+아래 데이터는 경기 영상에서 분석한 [${playerLabel}] 개인의 데이터입니다.
 
-[경기 요약]
-- 결과: ${summary.matchOutcome} (${summary.myScore} : ${summary.opponentScore})
-- 경기 시간: ${summary.matchTime}
-- 총 스트로크: ${summary.totalStrokeCount}
+[경기 전체 개요 — 참고용, 개인 수치 아님]
+- 경기 결과(Bottom 기준): ${summary.matchOutcome} (Bottom ${summary.myScore} : Top ${summary.opponentScore})
+- 총 경기 시간: ${summary.matchTime}
+- 양측 합산 총 스트로크: ${summary.totalStrokeCount}회 (두 플레이어 합계)
 
-[능력치(0~100)]
-- 스매시: ${ability.smash}
-- 수비: ${ability.defense}
-- 스피드: ${ability.speed}
-- 지구력: ${ability.stamina}
-- 정확도: ${ability.accuracy}
+[${playerLabel} 개인 스트로크 — 이 수치를 기준으로 분석하세요]
+- 개인 스트로크 합계: ${playerStrokeTotal}회
+- Smash: ${stroke.smash}회, Clear: ${stroke.clear}회, Drop: ${stroke.drop}회, Drive: ${stroke.drive}회
 
-[스트로크 카운트]
-- smash: ${stroke.smash}, clear: ${stroke.clear}, drop: ${stroke.drop}, drive: ${stroke.drive}
+[${playerLabel} 능력치 (0~100)]
+- 스매시: ${ability.smash} / 수비: ${ability.defense} / 스피드: ${ability.speed}
+- 지구력: ${ability.stamina} / 정확도: ${ability.accuracy}
 
 [기존 코치 피드백]
 ${coaching?.feedbackText ?? "(없음)"}
 
+[주의사항]
+- "총 스트로크 ${summary.totalStrokeCount}회"는 두 플레이어 합산 수치입니다.
+- ${playerLabel}의 실제 개인 스트로크는 ${playerStrokeTotal}회임을 명확히 언급하세요.
+- 경기 결과(승/패)는 Bottom Player 기준임을 인지하고 작성하세요.
+
 [출력 형식]
-- 너무 길지 않게(모바일에서도 보기 좋게) 작성
-- 아래 섹션을 반드시 포함:
-1) 한 줄 총평
-2) 핵심 지표 요약(불릿 3~5개)
-3) 강점 TOP2
-4) 보완점 TOP2
-5) 추천 훈련 3가지(각각 1~2줄, 구체적으로)
-- 마크다운 사용 가능(제목/불릿 정도)
+- 간결하게 (모바일 친화적)
+- 섹션: ① 한 줄 총평 ② 핵심 지표 요약(불릿 3~5개) ③ 강점 TOP2 ④ 보완점 TOP2 ⑤ 추천 훈련 3가지
+- 마크다운 사용 가능
         `.trim();
 
         const genAI = new GoogleGenerativeAI(API_KEY);
@@ -495,70 +833,82 @@ ${coaching?.feedbackText ?? "(없음)"}
 
         if (lastErr) throw lastErr;
         if (!alive) return;
-        setAiBriefing(text || "");
+        setBriefings((prev) => ({ ...prev, [activePlayer]: text || "" }));
       } catch (e: any) {
         if (!alive) return;
-        setAiBriefingError(
-          e?.message ?? "AI 브리핑 생성 중 오류가 발생했습니다. (API Key/모델명/권한 설정 확인)",
+        setBriefingError(
+          e?.message ?? "AI 브리핑 생성 중 오류가 발생했습니다.",
         );
-        setAiBriefing("");
       } finally {
         if (!alive) return;
-        setAiBriefingLoading(false);
+        setBriefingLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, [report]);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report, activePlayer]);
 
+  // ── Derived UI data ───────────────────────────────────────────────────────
   const ui = useMemo(() => {
-    const data = report?.data;
-    const summary = data?.summary;
-    const position = data?.positionAnalysis;
-    const strokeTypes = data?.strokeTypes;
-    const ability = data?.abilityMetrics;
+    if (!report) return null;
+    const summary = report.data.summary;
+    const playerData = report.data.players[activePlayer];
 
-    const heatmapZones: UiHeatmapZone[] =
-      position?.heatmapData?.map((p, idx) => ({
-        x: p.x,
-        y: p.y,
-        intensity: p.value ?? 0.45 + (idx % 5) * 0.1,
-    time: p.timeSec,
-      })) ?? [];
+    const heatmapZones = buildZones(playerData.positionAnalysis.heatmapData);
 
-    const strokeData = strokeTypes
-      ? [
-          { name: "스매시", count: strokeTypes.smash, color: "#ef4444" },
-          { name: "클리어", count: strokeTypes.clear, color: "#3b82f6" },
-          { name: "드롭",   count: strokeTypes.drop,  color: "#10b981" },
-          { name: "드라이브", count: strokeTypes.drive, color: "#f59e0b" },
-        ].filter((s) => typeof s.count === "number")
-      : [];
+    const strokeData = [
+      { name: "스매시", count: playerData.strokeTypes.smash, color: "#ef4444" },
+      { name: "클리어", count: playerData.strokeTypes.clear, color: "#3b82f6" },
+      { name: "드롭", count: playerData.strokeTypes.drop, color: "#10b981" },
+      {
+        name: "드라이브",
+        count: playerData.strokeTypes.drive,
+        color: "#f59e0b",
+      },
+    ];
 
-    const abilityData = ability
-      ? [
-          { name: "스매시", value: ability.smash },
-          { name: "수비",   value: ability.defense },
-          { name: "스피드", value: ability.speed },
-          { name: "지구력", value: ability.stamina },
-          { name: "정확도", value: ability.accuracy },
-        ]
-      : [];
+    const abilityData = [
+      { name: "스매시", value: playerData.abilityMetrics.smash },
+      { name: "수비", value: playerData.abilityMetrics.defense },
+      { name: "스피드", value: playerData.abilityMetrics.speed },
+      { name: "지구력", value: playerData.abilityMetrics.stamina },
+      { name: "정확도", value: playerData.abilityMetrics.accuracy },
+    ];
 
-    return { summary, heatmapZones, strokeData, abilityData };
-  }, [report]);
+    const accentColor = activePlayer === "bottom" ? "#3b82f6" : "#6366f1";
 
-  // ── Loading / error states ──────────────────────────────────────────────────
+    return { summary, heatmapZones, strokeData, abilityData, accentColor };
+  }, [report, activePlayer]);
+
+  // Reset heatmap selection on player switch
+  useEffect(() => {
+    setSelectedHeatmapPoint(null);
+  }, [activePlayer]);
+
+  // ── Loading / error states ────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
-        <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo />
+        <Header
+          currentPage="report"
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          hasSelectedVideo
+        />
         <main className="container mx-auto max-w-6xl px-6 py-10">
-          <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+          <button
+            onClick={onBack}
+            className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          >
             ← 돌아가기
           </button>
-          <div className="rounded-xl border border-gray-100 p-8">
-            <div className="text-sm font-semibold text-gray-700">리포트 불러오는 중...</div>
-            <div className="mt-2 text-xs text-gray-400">잠시만 기다려줘.</div>
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center">
+            <div className="w-8 h-8 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-gray-600 font-medium">
+              리포트 불러오는 중...
+            </p>
           </div>
         </main>
       </div>
@@ -568,15 +918,28 @@ ${coaching?.feedbackText ?? "(없음)"}
   if (errorMsg) {
     return (
       <div className="min-h-screen bg-white">
-        <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo />
+        <Header
+          currentPage="report"
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          hasSelectedVideo
+        />
         <main className="container mx-auto max-w-6xl px-6 py-10">
-          <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+          <button
+            onClick={onBack}
+            className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          >
             ← 돌아가기
           </button>
           <div className="rounded-xl border border-red-100 bg-red-50 p-8">
-            <div className="text-sm font-bold text-red-700">리포트를 불러오지 못했습니다.</div>
-            <div className="mt-2 text-xs text-red-600">{errorMsg}</div>
-            <button onClick={() => window.location.reload()} className="mt-6 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50">
+            <p className="text-sm font-bold text-red-700">
+              리포트를 불러오지 못했습니다.
+            </p>
+            <p className="mt-1 text-xs text-red-600">{errorMsg}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 text-sm text-red-700 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50"
+            >
               새로고침
             </button>
           </div>
@@ -585,105 +948,195 @@ ${coaching?.feedbackText ?? "(없음)"}
     );
   }
 
-  if (!report || !ui.summary) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo />
-        <main className="container mx-auto max-w-6xl px-6 py-10">
-          <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50">
-            ← 돌아가기
-          </button>
-          <div className="rounded-xl border border-gray-100 p-8">
-            <div className="text-sm font-semibold text-gray-700">리포트 데이터가 비어있어</div>
-            <div className="mt-2 text-xs text-gray-400">백엔드 응답을 확인해줘.</div>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  if (!report || !ui) return null;
 
-  const summary = ui.summary;
+  const { summary, heatmapZones, strokeData, abilityData, accentColor } = ui;
+  const aiBriefing = briefings[activePlayer];
+  const isBottom = activePlayer === "bottom";
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-white">
-      <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo />
+    <div className="min-h-screen bg-gray-50">
+      <Header
+        currentPage="report"
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        hasSelectedVideo
+      />
 
       <main className="container mx-auto max-w-6xl px-6 py-10">
+        {/* Back */}
         <button
           onClick={onBack}
-          className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
         >
           ← 돌아가기
         </button>
 
         <div className="space-y-6">
+          {/* ── 1. Match Summary (player-independent) ── */}
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-5">
+              <Users className="size-4 text-gray-500" />
+              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">
+                경기 결과 요약
+              </h2>
+            </div>
 
-          {/* ── Match Summary ── */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-            <h2 className="mb-6 text-lg font-bold text-gray-900">경기 결과 요약</h2>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              {[
-                { label: "바텀 플레이어 점수",    value: summary.myScore,          color: "text-blue-600",   icon: <Award className="size-4 text-blue-400" /> },
-                { label: "탑 플레이어 점수",  value: summary.opponentScore,    color: "text-gray-700",   icon: <Award className="size-4 text-gray-400" /> },
-                { label: "총 스트로크", value: `${summary.totalStrokeCount}회`, color: "text-purple-600", icon: <Zap className="size-4 text-purple-400" /> },
-                { label: "경기 시간",  value: summary.matchTime,        color: "text-orange-600", icon: <Clock className="size-4 text-orange-400" /> },
-              ].map(({ label, value, color, icon }) => (
-                <div key={label} className="rounded-2xl border border-gray-50 bg-[#f8fafc] p-6 text-center">
-                  <div className="mb-2 flex items-center justify-center gap-1.5">
-                    {icon}
-                    <span className="text-xs font-semibold text-gray-400">{label}</span>
-                  </div>
-                  <div className={`text-3xl font-bold ${color}`}>{value}</div>
+            {/* Score hero */}
+            <div className="flex items-center justify-center gap-6 mb-6 py-4 rounded-xl bg-gray-50">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
+                  Bottom
+                </span>
+                <span className="text-5xl font-black text-gray-900 tabular-nums">
+                  {summary.myScore}
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-2xl font-light text-gray-300 mt-1">
+                  VS
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
+                  Top
+                </span>
+                <span className="text-5xl font-black text-gray-900 tabular-nums">
+                  {summary.opponentScore}
+                </span>
+              </div>
+            </div>
+
+            {/* Meta stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                <Zap className="size-4 text-purple-400" />
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                    양측 합산 스트로크
+                  </p>
+                  <p className="text-lg font-black text-purple-600">
+                    {summary.totalStrokeCount}회
+                  </p>
                 </div>
-              ))}
+              </div>
+              <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                <Clock className="size-4 text-orange-400" />
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                    경기 시간
+                  </p>
+                  <p className="text-lg font-black text-orange-600">
+                    {summary.matchTime}
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
-          {/* ── Heatmap ── */}
+          {/* ── 2. Player Toggle ── */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">
+                플레이어를 선택하면 아래 모든 섹션이 변경됩니다.
+              </p>
+              <PlayerToggle
+                active={activePlayer}
+                onChange={(k) => setActivePlayer(k)}
+              />
+            </div>
+            <div
+              className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border"
+              style={{
+                background: `${accentColor}10`,
+                borderColor: `${accentColor}30`,
+                color: accentColor,
+              }}
+            >
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ background: accentColor }}
+              />
+              {isBottom ? "Bottom Player 분석 중" : "Top Player 분석 중"}
+            </div>
+          </div>
+
+          {/* ── 3. Heatmap ── */}
           <CollapsibleCard
             title="히트맵"
-            icon={<Target className="size-4 text-blue-600" />}
+            icon={<Target className="size-4" style={{ color: accentColor }} />}
             onExpand={() => setExpandedPanel("heatmap")}
           >
             <BadmintonHeatmapCourt
-              zones={ui.heatmapZones}
+              zones={heatmapZones}
               selectedHeatmapPoint={selectedHeatmapPoint}
               setSelectedHeatmapPoint={setSelectedHeatmapPoint}
               onJumpToVideo={onJumpToVideo}
+              playerKey={activePlayer}
             />
           </CollapsibleCard>
 
-          {/* ── Stroke + Ability side-by-side ── */}
+          {/* ── 4. Stroke + Ability ── */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Stroke Types */}
+            {/* Stroke */}
             <CollapsibleCard
-              title="스트로크 종류"
-              icon={<Zap className="size-4 text-purple-600" />}
+              title="스트로크 분포"
+              icon={<Zap className="size-4 text-purple-500" />}
               onExpand={() => setExpandedPanel("stroke")}
             >
-              <div className="mb-6 h-[220px]">
+              <div className="mb-3 h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={ui.strokeData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+                  <BarChart
+                    data={strokeData}
+                    margin={{ top: 0, right: 16, left: -20, bottom: 0 }}
+                  >
                     <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                    <Tooltip />
-                    <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={38}>
-                      {ui.strokeData.map((entry, index) => (
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 10,
+                        border: "1px solid #e5e7eb",
+                        fontSize: 12,
+                      }}
+                      cursor={{ fill: "rgba(0,0,0,0.03)" }}
+                    />
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={36}>
+                      {strokeData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div className="space-y-2.5">
-                {ui.strokeData.map((stroke) => (
-                  <div key={stroke.name} className="flex items-center justify-between rounded-lg px-1">
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stroke.color }} />
-                      <span className="text-xs font-semibold text-gray-600">{stroke.name}</span>
+              <div className="grid grid-cols-2 gap-2">
+                {strokeData.map((stroke) => (
+                  <div
+                    key={stroke.name}
+                    className="flex items-center justify-between rounded-lg px-3 py-2 bg-gray-50 border border-gray-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: stroke.color }}
+                      />
+                      <span className="text-xs font-semibold text-gray-600">
+                        {stroke.name}
+                      </span>
                     </div>
-                    <span className="text-xs font-bold text-gray-500">{stroke.count}회</span>
+                    <span className="text-xs font-bold text-gray-500">
+                      {stroke.count}회
+                    </span>
                   </div>
                 ))}
               </div>
@@ -695,34 +1148,57 @@ ${coaching?.feedbackText ?? "(없음)"}
               icon={<Award className="size-4 text-orange-500" />}
               onExpand={() => setExpandedPanel("ability")}
             >
-              <div className="mb-4 flex h-[220px] items-center justify-center">
+              <div className="mb-3 h-[200px] flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={ui.abilityData}>
+                  <RadarChart data={abilityData}>
                     <PolarGrid stroke="#f1f5f9" />
-                    <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                    <Radar name="능력치" dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.45} />
-                    <Tooltip />
+                    <PolarAngleAxis
+                      dataKey="name"
+                      tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    />
+                    <Radar
+                      name="능력치"
+                      dataKey="value"
+                      stroke={accentColor}
+                      fill={accentColor}
+                      fillOpacity={0.35}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 10,
+                        border: "1px solid #e5e7eb",
+                        fontSize: 12,
+                      }}
+                    />
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2 px-1">
-                {ui.abilityData.map((ability) => (
-                  <div key={ability.name} className="flex items-center justify-between border-b border-gray-50 py-1">
-                    <span className="text-xs font-semibold text-gray-500">{ability.name}</span>
-                    <span className="text-xs font-bold text-blue-600">{ability.value}점</span>
-                  </div>
+              {/* Compact grade rows — 라벨·등급·바·점수를 한 줄에 */}
+              <div className="flex flex-col divide-y divide-gray-50">
+                {abilityData.map((a) => (
+                  <AbilityGradeRow
+                    key={a.name}
+                    label={a.name}
+                    value={a.value}
+                    accentColor={accentColor}
+                  />
                 ))}
               </div>
             </CollapsibleCard>
           </div>
 
-          {/* ── AI Briefing ── */}
+          {/* ── 5. AI Briefing ── */}
           <section className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-            {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4">
               <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900">
                 <Bot className="size-4 text-blue-600" />
                 AI 브리핑
+                <span
+                  className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: `${accentColor}15`, color: accentColor }}
+                >
+                  {isBottom ? "Bottom Player" : "Top Player"}
+                </span>
               </h2>
               <button
                 type="button"
@@ -733,62 +1209,92 @@ ${coaching?.feedbackText ?? "(없음)"}
                 확대
               </button>
             </div>
-
-            {/* Body */}
             <div className="p-6">
-                {aiBriefingLoading && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <span className="h-2 w-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                    <span className="text-sm text-blue-600 font-medium">AI가 리포트를 요약 중입니다...</span>
+              {briefingLoading && (
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="h-2 w-2 rounded-full animate-bounce"
+                        style={{
+                          backgroundColor: accentColor,
+                          animationDelay: `${delay}ms`,
+                        }}
+                      />
+                    ))}
                   </div>
-                )}
-
-                {aiBriefingError && (
-                  <div className="text-sm text-red-600">
-                    브리핑 생성 실패: {aiBriefingError}
-                  </div>
-                )}
-
-                {!aiBriefingLoading && !aiBriefingError && (
-                  <MarkdownBriefing content={aiBriefing} />
-                )}
-
-                <p className="mt-4 text-[11px] text-gray-400">
-                  * 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: accentColor }}
+                  >
+                    AI가 리포트를 요약 중입니다...
+                  </span>
+                </div>
+              )}
+              {briefingError && (
+                <p className="text-sm text-red-600">
+                  브리핑 생성 실패: {briefingError}
                 </p>
+              )}
+              {!briefingLoading && !briefingError && (
+                <MarkdownBriefing content={aiBriefing} />
+              )}
+              <p className="mt-4 text-[11px] text-gray-400">
+                * 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.
+              </p>
             </div>
           </section>
-
         </div>
       </main>
 
       {/* ── Modals ── */}
-      <Modal open={expandedPanel === "heatmap"} title="히트맵 상세 보기" onClose={() => setExpandedPanel(null)}>
-        <p className="mb-5 text-sm text-gray-500">배드민턴 코트 기준 위치 데이터를 시각화한 히트맵입니다.</p>
+      <Modal
+        open={expandedPanel === "heatmap"}
+        title="히트맵 상세 보기"
+        onClose={() => setExpandedPanel(null)}
+      >
+        <p className="mb-5 text-sm text-gray-500">
+          {isBottom ? "Bottom Player" : "Top Player"}의 코트 포지션
+          히트맵입니다.
+        </p>
         <BadmintonHeatmapCourt
-          zones={ui.heatmapZones}
+          zones={heatmapZones}
           selectedHeatmapPoint={selectedHeatmapPoint}
           setSelectedHeatmapPoint={setSelectedHeatmapPoint}
           onJumpToVideo={onJumpToVideo}
+          playerKey={activePlayer}
           large
         />
       </Modal>
 
-      <Modal open={expandedPanel === "stroke"} title="스트로크 종류 상세 보기" onClose={() => setExpandedPanel(null)}>
+      <Modal
+        open={expandedPanel === "stroke"}
+        title="스트로크 분포 상세"
+        onClose={() => setExpandedPanel(null)}
+      >
         <div className="h-[420px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={ui.strokeData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+            <BarChart
+              data={strokeData}
+              margin={{ top: 20, right: 20, left: 0, bottom: 20 }}
+            >
               <CartesianGrid vertical={false} stroke="#e5edf5" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: "#64748b" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#94a3b8" }} />
-              <Tooltip />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 13, fill: "#64748b" }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: "#94a3b8" }}
+              />
+              <Tooltip contentStyle={{ borderRadius: 10 }} />
               <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={60}>
-                {ui.strokeData.map((entry, index) => (
-                  <Cell key={`expanded-cell-${index}`} fill={entry.color} />
+                {strokeData.map((entry, index) => (
+                  <Cell key={`exp-cell-${index}`} fill={entry.color} />
                 ))}
               </Bar>
             </BarChart>
@@ -796,27 +1302,58 @@ ${coaching?.feedbackText ?? "(없음)"}
         </div>
       </Modal>
 
-      <Modal open={expandedPanel === "ability"} title="능력치 분석 상세 보기" onClose={() => setExpandedPanel(null)}>
-        <div className="h-[480px]">
+      <Modal
+        open={expandedPanel === "ability"}
+        title="능력치 분석 상세"
+        onClose={() => setExpandedPanel(null)}
+      >
+        <div className="h-[320px] mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={ui.abilityData}>
+            <RadarChart data={abilityData}>
               <PolarGrid stroke="#e5edf5" />
-              <PolarAngleAxis dataKey="name" tick={{ fontSize: 13, fill: "#64748b" }} />
-              <Radar name="능력치" dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.45} />
-              <Tooltip />
+              <PolarAngleAxis
+                dataKey="name"
+                tick={{ fontSize: 13, fill: "#64748b" }}
+              />
+              <Radar
+                name="능력치"
+                dataKey="value"
+                stroke={accentColor}
+                fill={accentColor}
+                fillOpacity={0.4}
+              />
+              <Tooltip contentStyle={{ borderRadius: 10 }} />
             </RadarChart>
           </ResponsiveContainer>
         </div>
+        <div className="grid grid-cols-1 gap-2">
+          {abilityData.map((a) => (
+            <AbilityGradeCard
+              key={a.name}
+              label={a.name}
+              value={a.value}
+              accentColor={accentColor}
+            />
+          ))}
+        </div>
       </Modal>
 
-      <Modal open={expandedPanel === "briefing"} title="AI 브리핑 상세 보기" onClose={() => setExpandedPanel(null)}>
-        {aiBriefingLoading && (
-          <div className="text-sm text-blue-600 animate-pulse">AI가 리포트를 요약 중입니다...</div>
+      <Modal
+        open={expandedPanel === "briefing"}
+        title="AI 브리핑 상세"
+        onClose={() => setExpandedPanel(null)}
+      >
+        {briefingLoading && (
+          <p className="text-sm animate-pulse" style={{ color: accentColor }}>
+            AI가 리포트를 요약 중입니다...
+          </p>
         )}
-        {aiBriefingError && (
-          <div className="text-sm text-red-600">브리핑 생성 실패: {aiBriefingError}</div>
+        {briefingError && (
+          <p className="text-sm text-red-600">
+            브리핑 생성 실패: {briefingError}
+          </p>
         )}
-        {!aiBriefingLoading && !aiBriefingError && (
+        {!briefingLoading && !briefingError && (
           <MarkdownBriefing content={aiBriefing} />
         )}
       </Modal>
