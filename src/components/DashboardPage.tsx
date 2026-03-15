@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Upload, Plus, X } from "lucide-react";
+import { Upload, Plus, X, Film, Clock } from "lucide-react";
 import { Header, type Page } from "./Header";
 import {
   fetchDashboard,
   deleteVideo,
   DashboardResponse,
 } from "../api/dashboardApi";
-import { VideoItem } from "../components/VideoItem"; // 분리한 컴포넌트 import
+import { VideoItem } from "../components/VideoItem";
 
 interface VideoRecord {
   id: string;
@@ -15,7 +15,6 @@ interface VideoRecord {
   duration: string;
   score?: string;
   thumbnail?: string;
-  // 영상 상태 관리
   status?: "uploading" | "processing" | "completed" | "error";
 }
 
@@ -38,20 +37,15 @@ export function DashboardPage({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [videoName, setVideoName] = useState("");
 
-  // 통계 상태 관리
   const [stats, setStats] = useState<
     DashboardResponse["data"]["dashboardSummary"] | null
   >(null);
-  // 영상 목록 상태 관리
-  const [videos, setVideos] = useState<any[]>([]); // 타입은 위에서 정의한 VideoRecord 배열 사용
+  const [videos, setVideos] = useState<any[]>([]);
 
-  // 데이터 호출 로직을 재사용 가능한 함수로 분리
   const fetchData = useCallback(async () => {
     try {
       const json = await fetchDashboard();
       setStats(json.data.dashboardSummary);
-
-      // API에서 받아온 데이터를 VideoRecord 형태로 매핑하여 상태에 저장
       setVideos(
         json.data.recentVideos.map((v) => ({
           id: String(v.videoId),
@@ -68,40 +62,31 @@ export function DashboardPage({
     }
   }, []);
 
-  // 초기 로드
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // 분석 중인 영상이 있는지 확인
   const hasProcessingVideo = videos.some(
     (v) => v.status === "processing" || v.duration === "분석 중",
   );
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-
     if (hasProcessingVideo) {
-      // 5초마다 대시보드 데이터를 다시 불러옴
-      interval = setInterval(fetchData, 5000); // fetchData 재사용
+      interval = setInterval(fetchData, 5000);
     }
     return () => clearInterval(interval);
   }, [hasProcessingVideo, fetchData]);
 
-  // 영상 삭제 핸들러 API
   const handleDelete = async (id: string) => {
-    // 임시 업로드 중인 파일 삭제 처리
     if (id.startsWith("temp-")) {
       setVideos((prev) => prev.filter((v) => v.id !== id));
       return;
     }
-
     if (confirm("이 영상을 삭제하시겠습니까?")) {
       try {
-        await deleteVideo(id); // API 호출
-        setVideos((prev) => prev.filter((v) => v.id !== id)); // 상태 업데이트
-
-        // 통계 업데이트 (선택 사항)
+        await deleteVideo(id);
+        setVideos((prev) => prev.filter((v) => v.id !== id));
         if (stats) {
           setStats({
             ...stats,
@@ -117,13 +102,11 @@ export function DashboardPage({
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!uploadFile) {
       alert("업로드할 영상 파일을 선택해주세요.");
       return;
     }
 
-    // 1. 임시 ID 생성 및 목록에 '업로드 중' 상태로 즉시 추가 (Optimistic UI)
     const tempId = `temp-${Date.now()}`;
     const tempVideo: VideoRecord = {
       id: tempId,
@@ -133,50 +116,28 @@ export function DashboardPage({
       status: "uploading",
     };
 
-    setVideos([tempVideo, ...videos]); // 목록 맨 앞에 추가
-
-    // 2. 모달 즉시 닫기 및 초기화
+    setVideos([tempVideo, ...videos]);
     setShowUploadModal(false);
 
-    // 2. FormData 객체 생성 (파일 + 메타데이터)
     const formData = new FormData();
-
-    // 백엔드 @RequestPart("videoFile") 또는 파라미터명과 일치해야 함
     formData.append("videoFile", uploadFile);
-
-    // 쿼리 파라미터로 받을 경우 URL 뒤에 붙이고,
-    // 만약 파라미터로 받는다면 아래처럼 append
     formData.append("title", videoName || uploadFile.name);
     formData.append("matchDate", new Date().toISOString().split("T")[0]);
 
-    // 3. 백그라운드에서 API 요청 진행
     try {
       const token = localStorage.getItem("accessToken");
       const response = await fetch("http://localhost:8080/api/v1/videos", {
         method: "POST",
-        headers: {
-          // FormData를 사용할 때는 'Content-Type' 헤더를 명시적으로 설정하지 않아야 함
-          // 'Authorization': `Bearer ${token}`,
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error("Upload failed"); // 에러 발생 시 catch 블록으로 이동
-      }
+      if (!response.ok) throw new Error("Upload failed");
 
       const newVideoData = await response.json();
-
-      // 통계 카운트 즉시 업데이트
       if (stats) {
-        setStats({
-          ...stats,
-          totalVideos: stats.totalVideos + 1,
-        });
+        setStats({ ...stats, totalVideos: stats.totalVideos + 1 });
       }
-
-      // 4. 업로드 성공 시: 임시 데이터를 실제 서버 데이터로 교체
       setVideos((prevVideos) =>
         prevVideos.map((video) =>
           video.id === tempId
@@ -185,14 +146,13 @@ export function DashboardPage({
                 id: String(newVideoData.videoId),
                 name: newVideoData.title,
                 duration: "분석 중",
-                status: "processing", // 분석 서버 호출 단계이므로 '처리 중'이 적절함
+                status: "processing",
               }
             : video,
         ),
       );
     } catch (error) {
       console.error("Upload Error:", error);
-      // 5. 실패 시: 상태를 error로 변경하여 UI에 표시
       setVideos((prevVideos) =>
         prevVideos.map((video) =>
           video.id === tempId
@@ -206,7 +166,6 @@ export function DashboardPage({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <Header
         currentPage="dashboard"
         onNavigate={onNavigate}
@@ -214,59 +173,109 @@ export function DashboardPage({
         hasSelectedVideo={hasSelectedVideo}
       />
 
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
+      <main className="container mx-auto px-6 py-10 max-w-6xl">
+        {/* ── Page Header ─────────────────────────────────────── */}
+        <div className="flex items-end justify-between mb-8">
           <div>
-            <h1 className="text-4xl mb-2">내 경기 기록</h1>
-            <p className="text-gray-600">
-              업로드한 영상과 분석 리포트를 확인하세요
+            <p className="text-xs font-bold text-blue-500 uppercase tracking-[0.15em] mb-1">
+              내 경기 기록
+            </p>
+            <h1 className="text-3xl font-black text-gray-900 leading-tight">
+              영상 대시보드
+            </h1>
+            <p className="mt-1.5 text-sm text-gray-400 font-medium">
+              업로드한 경기 영상과 AI 분석 리포트를 관리하세요
             </p>
           </div>
           <button
             onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2.5 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-200 text-sm font-semibold"
           >
-            <Upload className="size-5" />
-            <span>영상 업로드</span>
+            <Upload className="size-4" />
+            영상 업로드
           </button>
         </div>
 
-        {/* Stats */}
+        {/* ── Stats Cards ─────────────────────────────────────── */}
         {stats && (
-          <div className="grid md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="text-gray-600 mb-2">총 업로드 영상</div>
-              <div className="text-3xl text-blue-600">{stats.totalVideos}</div>
-            </div>
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="text-gray-600 mb-2">총 분석 시간</div>
-              <div className="text-3xl text-indigo-600">
-                {stats.totalAnalysisTime}
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            {/* Total Videos */}
+            <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
+              <div className="absolute left-0 top-0 h-full w-1 bg-blue-500 rounded-l-2xl" />
+              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-50 flex-shrink-0">
+                <Film className="size-5 text-blue-600" />
               </div>
-            </div>
-            <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="text-gray-600 mb-2">평균 점수</div>
-              <div className="text-3xl text-purple-600">
-                {stats.averageScore}점
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">
+                  총 업로드 영상
+                </p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">
+                    {stats.totalVideos}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-400">
+                    개
+                  </span>
+                </div>
               </div>
+              <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-blue-50 opacity-50 group-hover:opacity-80 transition-opacity" />
+            </div>
+
+            {/* Total Analysis Time */}
+            <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
+              <div className="absolute left-0 top-0 h-full w-1 bg-indigo-500 rounded-l-2xl" />
+              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-50 flex-shrink-0">
+                <Clock className="size-5 text-indigo-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">
+                  총 분석 시간
+                </p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">
+                    {stats.totalAnalysisTime}
+                  </span>
+                </div>
+              </div>
+              <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-indigo-50 opacity-50 group-hover:opacity-80 transition-opacity" />
             </div>
           </div>
         )}
 
-        {/* Video List */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-2xl">최근 영상</h2>
+        {/* ── Video List ───────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* List header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm font-bold text-gray-900">최근 영상</span>
+              {videos.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold tabular-nums">
+                  {videos.length}
+                </span>
+              )}
+            </div>
           </div>
 
           {videos.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <Upload className="size-12 mx-auto mb-4 text-gray-400" />
-              <p>업로드된 영상이 없습니다</p>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+                <Upload className="size-6 text-gray-400" />
+              </div>
+              <p className="text-sm font-semibold text-gray-500 mb-1">
+                업로드된 영상이 없습니다
+              </p>
+              <p className="text-xs text-gray-400">
+                첫 번째 경기 영상을 업로드해보세요
+              </p>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="mt-5 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
+              >
+                영상 업로드
+              </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-gray-100">
               {videos.map((video) => (
                 <VideoItem
                   key={video.id}
@@ -281,81 +290,110 @@ export function DashboardPage({
         </div>
       </main>
 
-      {/* Upload Modal */}
+      {/* ── Upload Modal ─────────────────────────────────────── */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl">영상 업로드</h2>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  영상 업로드
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  경기 영상을 업로드하여 AI 분석을 받으세요
+                </p>
+              </div>
               <button
                 onClick={() => setShowUploadModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600"
               >
-                <X className="size-5" />
+                <X className="size-4" />
               </button>
             </div>
 
-            <form onSubmit={handleUpload}>
-              <div className="mb-6">
-                <label className="block text-sm mb-2 text-gray-700">
-                  영상 이름
-                </label>
-                <input
-                  type="text"
-                  value={videoName}
-                  onChange={(e) => setVideoName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="예: 주말 복식 경기"
-                  required
-                />
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-sm mb-2 text-gray-700">
-                  영상 파일
-                </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
+            <div className="px-6 py-5">
+              <form onSubmit={handleUpload}>
+                <div className="mb-5">
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+                    영상 이름
+                  </label>
                   <input
-                    type="file"
-                    accept="video/*"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                    id="video-upload"
+                    type="text"
+                    value={videoName}
+                    onChange={(e) => setVideoName(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50 placeholder:text-gray-400"
+                    placeholder="예: 주말 복식 경기"
+                    required
                   />
-                  <label htmlFor="video-upload" className="cursor-pointer">
-                    <Plus className="size-12 mx-auto mb-4 text-gray-400" />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+                    영상 파일
+                  </label>
+                  <label
+                    htmlFor="video-upload"
+                    className={`flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed p-8 cursor-pointer transition-all ${
+                      uploadFile
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={(e) =>
+                        setUploadFile(e.target.files?.[0] || null)
+                      }
+                      className="hidden"
+                      id="video-upload"
+                    />
                     {uploadFile ? (
-                      <p className="text-blue-600">{uploadFile.name}</p>
+                      <>
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-3">
+                          <Film className="size-5 text-blue-600" />
+                        </div>
+                        <p className="text-sm font-semibold text-blue-700 text-center truncate max-w-full px-4">
+                          {uploadFile.name}
+                        </p>
+                        <p className="text-xs text-blue-500 mt-1">
+                          클릭하여 파일 변경
+                        </p>
+                      </>
                     ) : (
                       <>
-                        <p className="text-gray-600">
-                          클릭하여 파일을 선택하거나
+                        <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center mb-3">
+                          <Plus className="size-5 text-gray-400" />
+                        </div>
+                        <p className="text-sm font-semibold text-gray-500">
+                          클릭하여 파일 선택
                         </p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          드래그 앤 드롭으로 업로드
+                        <p className="text-xs text-gray-400 mt-1">
+                          또는 드래그 앤 드롭
                         </p>
                       </>
                     )}
                   </label>
                 </div>
-              </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  업로드
-                </button>
-              </div>
-            </form>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowUploadModal(false)}
+                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-md shadow-blue-100 disabled:opacity-50"
+                  >
+                    업로드 시작
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
