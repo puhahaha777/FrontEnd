@@ -229,7 +229,7 @@ export function DashboardPage({
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">
-                  총 분석 시간
+                  총 영상 시간
                 </p>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">
