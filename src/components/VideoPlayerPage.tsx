@@ -44,25 +44,6 @@ interface Highlight {
 type VideoMode = "original" | "analyzed";
 
 // ─────────────────────────────────────────────────────────────
-// ★ 목업 데이터 (백엔드 연동 전 AI 분석 영상 테스트용)
-//
-// 백엔드 VideoDetailResponse.data.videoInfo 에
-//   originalVideoUrl / analyzedVideoUrl 필드가 추가되면
-//   ── MOCK START ~ MOCK END 블록을 삭제하고
-//   실제 API 값을 사용하세요.
-// ─────────────────────────────────────────────────────────────
-
-/** ── MOCK START ─────────────────────────────────────────────
- * 공개 샘플 영상 두 개를 원본/분석 영상으로 사용합니다.
- * 실제 스켈레톤 분석 영상 URL로 교체하거나, 연동 완료 후 제거하세요.
- */
-const MOCK_ORIGINAL_URL =
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
-const MOCK_ANALYZED_URL =
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4";
-/** ── MOCK END ───────────────────────────────────────────────*/
-
-// ─────────────────────────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────
 
@@ -140,17 +121,8 @@ export function VideoPlayerPage({
   >([]);
 
   // ── 영상 URL 결정 ─────────────────────────────────────────────
-  /**
-   * TODO: 백엔드 DTO 연동 후 아래 두 줄로 교체하고 MOCK 상수 삭제
-   *   const originalVideoUrl = videoInfo?.originalVideoUrl ?? null;
-   *   const analyzedVideoUrl = videoInfo?.analyzedVideoUrl ?? null;
-   */
-  /** ── MOCK 주입 (백엔드 연동 전 임시) — 연동 후 아래 두 줄 삭제 */
-  const originalVideoUrl: string | null =
-    videoInfo?.videoUrl ?? MOCK_ORIGINAL_URL;
-  const analyzedVideoUrl: string | null =
-    videoInfo?.skeletonVideoUrl || MOCK_ANALYZED_URL;
-  /** ── MOCK END ── */
+  const analyzedVideoUrl = videoInfo?.skeletonVideoUrl ?? null;
+  const originalVideoUrl = videoInfo?.videoUrl ?? null;
 
   const isAnalysisAvailable = !!analyzedVideoUrl;
 
@@ -427,7 +399,7 @@ export function VideoPlayerPage({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+  }, []);
 
   // ─────────────────────────────────────────────────────────────
   // 유틸리티
