@@ -292,7 +292,7 @@ export function OnboardingPage({
               CAM-04: SHUTTLE_POS
             </div>
             <img
-              src="https://images.unsplash.com/photo-1622279457486-62dcc4a631d6?auto=format&fit=crop&q=80"
+              // src="https://images.unsplash.com/photo-1622279457486-62dcc4a631d6?auto=format&fit=crop&q=80"
               alt="Feed 3"
               className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 transition-all duration-500"
             />
