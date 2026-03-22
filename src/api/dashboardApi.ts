@@ -1,4 +1,5 @@
 // src/api/dashboardApi.ts
+import { apiClient } from './apiClient';
 
 export interface DashboardSummary {
   totalVideos: number;
@@ -32,30 +33,16 @@ export interface DashboardResponse {
 
 // 대시보드 데이터 가져오기
 export async function fetchDashboard(): Promise<DashboardResponse> {
-  const token = localStorage.getItem('accessToken');
-  if (!token) throw new Error('로그인이 필요합니다.');
-
-  const response = await fetch('http://localhost:8080/api/v1/dashboard', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
+  const response = await apiClient('/api/v1/dashboard');
   if (!response.ok) throw new Error('Failed to fetch');
-  return await response.json();
+  return response.json();
 }
 
 // 비디오 삭제 API (임시)
 export async function deleteVideo(videoId: string): Promise<void> {
   const token = localStorage.getItem('accessToken');
-  const response = await fetch(`http://localhost:8080/api/v1/videos/${videoId}`, {
+  const response = await apiClient(`/api/v1/videos/${videoId}`, {
     method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
   });
-
   if (!response.ok) throw new Error('Failed to delete video');
 }

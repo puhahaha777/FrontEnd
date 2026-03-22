@@ -1,42 +1,16 @@
 import {ReportResponse} from "../types/reportpageType"
+import { apiClient } from './apiClient';
+// import { mockReport } from "../types/reportMock";
 
-import { mockReport } from "../types/reportMock";
-
-//🔹 2. API 호출 함수 ✨✨✨✨
-/*
 export async function fetchReport(
   videoId: string | number
 ): Promise<ReportResponse> {
-
-  const token =
-    localStorage.getItem("accessToken") ??
-    sessionStorage.getItem("accessToken");
-
-  if (!token) {
-    throw new Error("로그인이 필요합니다.");
-  }
-
-  const res = await fetch(`/api/v1/analysis/${videoId}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
+  const res = await apiClient(`/api/v1/analysis/${videoId}`);
+ 
   if (!res.ok) {
-    throw new Error(`리포트 조회 실패: ${res.status}`);
+    const json = await res.json().catch(() => ({}));
+    throw new Error((json as any).message ?? `리포트 조회 실패: ${res.status}`);
   }
-
-  return (await res.json()) as ReportResponse;
-}
-
-// reportpageApi.ts
-*/
-export async function fetchReport(videoId: string) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(mockReport);
-    }, 500);
-  });
+ 
+  return res.json() as Promise<ReportResponse>;
 }

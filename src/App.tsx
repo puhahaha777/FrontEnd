@@ -5,7 +5,7 @@ import { DashboardPage } from "./components/DashboardPage";
 import { VideoPlayerPage } from "./components/VideoPlayerPage";
 import { AnalysisReportPage } from "./components/AnalysisReportPage";
 import { AccountPage } from "./components/AccountPage";
-import "../styles/index.css"
+import "../styles/index.css";
 // import { LoginModal } from "./components/ui/LoginModal";
 import { AuthModal } from "./components/ui/AuthModal";
 
@@ -47,19 +47,21 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authInitialView, setAuthInitialView] = useState<"login" | "signup" | "forgot">("login");
+  const [authInitialView, setAuthInitialView] = useState<
+    "login" | "signup" | "forgot"
+  >("login");
 
   const openLoginModal = () => {
     setAuthInitialView("login");
     setIsAuthOpen(true);
   };
 
-const openSignupModal = () => {
-  setAuthInitialView("signup");
-  setIsAuthOpen(true);
-};
+  const openSignupModal = () => {
+    setAuthInitialView("signup");
+    setIsAuthOpen(true);
+  };
 
-const closeAuthModal = () => setIsAuthOpen(false);
+  const closeAuthModal = () => setIsAuthOpen(false);
 
   // // 로그인 모달 상태
   // const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -87,13 +89,20 @@ const closeAuthModal = () => setIsAuthOpen(false);
     return () => window.removeEventListener("popstate", apply);
   }, []);
 
+  // 강제 로그아웃 이벤트 리스너 (예: 토큰 만료 시)
+  useEffect(() => {
+    const onForceLogout = () => handleLogout();
+    window.addEventListener("auth:logout", onForceLogout);
+    return () => window.removeEventListener("auth:logout", onForceLogout);
+  }, []);
+
   //  state -> URL
   const go = (page: Page, videoId?: string | null) => {
     const url = buildUrl(page, videoId ?? selectedVideoId);
     window.history.pushState(
       { page, videoId: videoId ?? selectedVideoId },
       "",
-      url
+      url,
     );
     setCurrentPage(page);
     if (typeof videoId !== "undefined") setSelectedVideoId(videoId);
@@ -107,7 +116,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
   };
 
   const handleLogout = () => {
-    localStorage.clear();   // 토큰 삭제
+    localStorage.clear(); // 토큰 삭제
     setIsLoggedIn(false);
     setSelectedVideoId(null);
     go("onboarding", null);
@@ -123,7 +132,9 @@ const closeAuthModal = () => setIsAuthOpen(false);
     go("report", videoId);
   };
 
-  const handleNavigate = (page: "dashboard" | "video" | "report" | "account") => {
+  const handleNavigate = (
+    page: "dashboard" | "video" | "report" | "account",
+  ) => {
     if ((page === "video" || page === "report") && !selectedVideoId) return;
     go(page, selectedVideoId);
   };
@@ -136,7 +147,7 @@ const closeAuthModal = () => setIsAuthOpen(false);
   //  로그인 필요한데 로그인 안했으면: 모달 열기(선택)
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
-    
+
     if (!token && currentPage !== "onboarding") {
       // 대시보드/리포트 같은 곳에 갔는데 로그인 안 되어있으면 모달 띄우고 온보딩으로
       openLoginModal();
@@ -147,11 +158,11 @@ const closeAuthModal = () => setIsAuthOpen(false);
   return (
     <>
       {currentPage === "onboarding" && (
-        <OnboardingPage 
-        onGetStarted={openLoginModal}
-        onOpenLogin={openLoginModal}
-       onOpenSignup={openSignupModal}
-         />
+        <OnboardingPage
+          onGetStarted={openLoginModal}
+          onOpenLogin={openLoginModal}
+          onOpenSignup={openSignupModal}
+        />
       )}
 
       {currentPage === "dashboard" && (
@@ -192,12 +203,12 @@ const closeAuthModal = () => setIsAuthOpen(false);
       )}
 
       {/* 로그인 모달은 항상 렌더링(조건부 표시만 open으로) */}
-     <AuthModal
-      open={isAuthOpen}
-      onClose={closeAuthModal}
-      onLoginSuccess={handleLoginSuccess}
-      initialView={authInitialView}
-/>
+      <AuthModal
+        open={isAuthOpen}
+        onClose={closeAuthModal}
+        onLoginSuccess={handleLoginSuccess}
+        initialView={authInitialView}
+      />
     </>
   );
 }
