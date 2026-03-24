@@ -89,7 +89,7 @@ function MiniCourtMap({ currentTime }: { currentTime: number }) {
           <span className="text-[7px] text-white/70 font-bold uppercase tracking-widest">BTM</span>
         </div>
       </div>
-      <p className="text-[9px] text-gray-400 text-center mt-1">셔틀콕 추적</p>
+      <p className="text-[9px] text-gray-400 text-center mt-1">선수 동선 미니맵</p>
     </div>
   );
 }

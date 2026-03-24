@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { Header, type Page } from "./Header";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { AppSidebar } from "./Appsidebar";
 
 interface AccountPageProps {
   onLogout: () => void;
@@ -922,11 +921,6 @@ export function AccountPage({
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <AppSidebar
-          currentPage="account"
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
 
         <main className="flex-1 overflow-y-auto">
           <div className="container mx-auto px-6 py-8">
