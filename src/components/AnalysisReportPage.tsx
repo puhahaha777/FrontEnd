@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Award,
   Bot,
@@ -6,10 +6,9 @@ import {
   Clock,
   Maximize2,
   Target,
+  Users,
   X,
   Zap,
-  User,
-  Users,
 } from "lucide-react";
 import {
   RadarChart,
@@ -36,12 +35,19 @@ import type {
   HeatmapPoint,
 } from "../types/reportpageType";
 
+import { AppSidebar } from "./Appsidebar";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 const GEMINI_MODEL_CANDIDATES = ["gemini-2.5-flash", "models/gemini-2.5-flash"];
+
+// Header 높이(현재 Header.tsx 기준 h-16 = 64px)
+const HEADER_HEIGHT = 64;
+// 섹션 이동 시 추가 여백
+const SECTION_SCROLL_OFFSET = 20;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types / Props
@@ -56,21 +62,22 @@ interface AnalysisReportPageProps {
 }
 
 type UiHeatmapZone = {
-  x: number; // 0-100, normalised to court half
+  x: number;
   y: number;
   intensity: number;
   time?: number;
 };
 
 type ExpandedPanel = "heatmap" | "stroke" | "ability" | "briefing" | null;
+type SidebarSectionId = "summary" | "heatmap" | "stroke" | "ability" | "briefing";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Player Toggle
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PLAYERS: { key: PlayerKey; label: string; short: string }[] = [
-  { key: "bottom", label: "Bottom Player", short: "Bot" },
-  { key: "top", label: "Top Player", short: "Top" },
+const PLAYERS: { key: PlayerKey; label: string }[] = [
+  { key: "bottom", label: "Bottom Player" },
+  { key: "top", label: "Top Player" },
 ];
 
 function PlayerToggle({
@@ -81,13 +88,14 @@ function PlayerToggle({
   onChange: (k: PlayerKey) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+    <div className="grid grid-cols-2 gap-1 bg-gray-100 rounded-xl p-1 w-full">
       {PLAYERS.map(({ key, label }) => (
         <button
           key={key}
           onClick={() => onChange(key)}
           className={`
-            flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150
+            h-16 w-full rounded-lg text-sm font-semibold transition-all duration-150
+            flex items-center justify-center text-center leading-tight px-2
             ${
               active === key
                 ? key === "bottom"
@@ -97,8 +105,7 @@ function PlayerToggle({
             }
           `}
         >
-          <User className="size-3.5" />
-          {label}
+          <span>{label}</span>
         </button>
       ))}
     </div>
@@ -115,17 +122,22 @@ function CollapsibleCard({
   onExpand,
   defaultOpen = true,
   children,
+  sectionId,
 }: {
   title: string;
   icon: React.ReactNode;
   onExpand: () => void;
   defaultOpen?: boolean;
   children: React.ReactNode;
+  sectionId?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+    <div
+      id={sectionId}
+      className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24"
+    >
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
         <button
           type="button"
@@ -180,6 +192,7 @@ function Modal({
   children: React.ReactNode;
 }) {
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
@@ -249,7 +262,7 @@ function BadmintonHeatmapCourt({
   const NW = 5;
 
   const isBottom = playerKey === "bottom";
-  const accentColor = isBottom ? "#3b82f6" : "#6366f1"; // blue / indigo
+  const accentColor = isBottom ? "#3b82f6" : "#6366f1";
 
   const courtSvg = (
     <svg
@@ -265,7 +278,6 @@ function BadmintonHeatmapCourt({
         <filter id="cs">
           <feDropShadow dx="0" dy="4" stdDeviation="7" floodOpacity="0.20" />
         </filter>
-        {/* highlight band for active half */}
         <linearGradient id="highlight-top" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={accentColor} stopOpacity="0.08" />
           <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
@@ -276,10 +288,8 @@ function BadmintonHeatmapCourt({
         </linearGradient>
       </defs>
 
-      {/* background */}
       <rect width={VW} height={VH} fill="#eef4f0" />
 
-      {/* court surface */}
       <rect
         x={OL}
         y={OT}
@@ -289,24 +299,15 @@ function BadmintonHeatmapCourt({
         filter="url(#cs)"
         rx="2"
       />
-      <rect
-        x={OL}
-        y={OT}
-        width={OW}
-        height={OH}
-        fill="url(#cg)"
-        rx="2"
-        opacity="0.35"
-      />
+      <rect x={OL} y={OT} width={OW} height={OH} fill="url(#cg)" />
 
-      {/* active half highlight */}
       {isBottom ? (
         <rect
           x={OL}
           y={NY}
           width={OW}
           height={OH / 2}
-          fill={`url(#highlight-bottom)`}
+          fill="url(#highlight-bottom)"
         />
       ) : (
         <rect
@@ -314,11 +315,10 @@ function BadmintonHeatmapCourt({
           y={OT}
           width={OW}
           height={OH / 2}
-          fill={`url(#highlight-top)`}
+          fill="url(#highlight-top)"
         />
       )}
 
-      {/* Lines */}
       <rect
         x={OL}
         y={OT}
@@ -333,25 +333,20 @@ function BadmintonHeatmapCourt({
       <line x1={SR} y1={OT} x2={SR} y2={OB} stroke="#fff" strokeWidth={LW} />
       <line x1={OL} y1={BT} x2={OR} y2={BT} stroke="#fff" strokeWidth={LW} />
       <line x1={OL} y1={BB} x2={OR} y2={BB} stroke="#fff" strokeWidth={LW} />
-      {/* Net */}
       <line x1={OL} y1={NY} x2={OR} y2={NY} stroke="#fff" strokeWidth={NW} />
       <circle cx={OL} cy={NY} r="5" fill="#fff" />
       <circle cx={OR} cy={NY} r="5" fill="#fff" />
-      {/* Short service lines */}
       <line x1={SL} y1={SST} x2={SR} y2={SST} stroke="#fff" strokeWidth={LW} />
       <line x1={SL} y1={SSB} x2={SR} y2={SSB} stroke="#fff" strokeWidth={LW} />
-      {/* Centre service lines */}
       <line x1={CX} y1={BT} x2={CX} y2={SST} stroke="#fff" strokeWidth={LW} />
       <line x1={CX} y1={SSB} x2={CX} y2={BB} stroke="#fff" strokeWidth={LW} />
 
-      {/* Heatmap dots */}
       {zones.map((zone, index) => {
-        // zone.x / zone.y already scaled to full court (0-100)
-        // x is vertical (top→bottom), y is horizontal (left→right)
         const px = OL + (zone.y / 100) * OW;
         const py = OT + (zone.x / 100) * OH;
         const r = 15 + zone.intensity * 20;
         const sel = selectedHeatmapPoint === index;
+
         return (
           <g
             key={index}
@@ -386,7 +381,6 @@ function BadmintonHeatmapCourt({
         );
       })}
 
-      {/* Player side labels */}
       <text
         x={CX}
         y={OT - 14}
@@ -410,7 +404,6 @@ function BadmintonHeatmapCourt({
         BOTTOM
       </text>
 
-      {/* Active side indicator arrow */}
       {isBottom ? (
         <text
           x={CX}
@@ -545,16 +538,6 @@ function BadmintonHeatmapCourt({
 // Heatmap zone factory
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Converts raw HeatmapPoint[] (full 0-100 court coords) into UiHeatmapZone[].
- *
- * For "bottom" player: original data lives in x > ~50, we keep as-is.
- * For "top"    player: original data lives in x < ~50, we keep as-is.
- *
- * The court SVG already maps x=0 → top edge, x=100 → bottom edge,
- * so no coordinate flip is needed — the dots naturally appear in the
- * correct half.
- */
 function buildZones(points: HeatmapPoint[]): UiHeatmapZone[] {
   return points.map((p) => ({
     x: p.x,
@@ -569,10 +552,12 @@ function buildZones(points: HeatmapPoint[]): UiHeatmapZone[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MarkdownBriefing({ content }: { content: string }) {
-  if (!content)
+  if (!content) {
     return (
       <p className="text-sm text-gray-400">AI 브리핑 데이터가 없습니다.</p>
     );
+  }
+
   return (
     <div
       className="prose prose-sm max-w-none text-gray-800 leading-relaxed
@@ -590,7 +575,7 @@ function MarkdownBriefing({ content }: { content: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grade system  (0-100 → A+/A/A-/B+/B/B-/C+/C/C-/D+/D/D-/E)
+// Grade system
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GRADE_THRESHOLDS: {
@@ -625,7 +610,6 @@ function scoreToGrade(value: number): {
   return { grade: "E", color: "#dc2626", bg: "#fee2e2" };
 }
 
-/** Bar fill width capped at 100% for visual display */
 function scoreToBarPct(value: number): number {
   return Math.min(Math.max(value, 0), 100);
 }
@@ -644,25 +628,21 @@ function AbilityGradeRow({
 
   return (
     <div className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-50 transition-colors">
-      {/* 등급 배지 */}
       <span
         className="shrink-0 w-8 text-center text-xs font-black py-0.5 rounded-md"
         style={{ color, background: bg }}
       >
         {grade}
       </span>
-      {/* 라벨 */}
       <span className="shrink-0 w-12 text-xs font-semibold text-gray-600">
         {label}
       </span>
-      {/* 바 */}
       <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
         <div
           className="h-1.5 rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, background: accentColor }}
         />
       </div>
-      {/* 점수 */}
       <span className="shrink-0 w-8 text-right text-[10px] tabular-nums text-gray-400 font-medium">
         {value}
       </span>
@@ -670,7 +650,6 @@ function AbilityGradeRow({
   );
 }
 
-// AbilityGradeCard — 모달용 (넓은 공간에서 사용)
 function AbilityGradeCard({
   label,
   value,
@@ -718,7 +697,6 @@ export function AnalysisReportPage({
   onNavigate,
   onLogout,
 }: AnalysisReportPageProps) {
-  // ── State ──────────────────────────────────────────────────────────────────
   const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<
     number | null
   >(null);
@@ -729,7 +707,6 @@ export function AnalysisReportPage({
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Per-player AI briefing cache
   const [briefings, setBriefings] = useState<Record<PlayerKey, string>>({
     top: "",
     bottom: "",
@@ -737,14 +714,36 @@ export function AnalysisReportPage({
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState<string | null>(null);
 
-  // ── Fetch report ──────────────────────────────────────────────────────────
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollToSection = (id: SidebarSectionId) => {
+    const container = mainScrollRef.current;
+    const el = document.getElementById(`section-${id}`);
+
+    if (!container || !el) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = el.getBoundingClientRect();
+
+    const nextTop =
+      container.scrollTop +
+      (elementRect.top - containerRect.top) -
+      SECTION_SCROLL_OFFSET;
+
+    container.scrollTo({
+      top: Math.max(nextTop, 0),
+      behavior: "smooth",
+    });
+  };
+
   useEffect(() => {
     let alive = true;
+
     (async () => {
       try {
         setLoading(true);
         setErrorMsg(null);
-        const res = mockReport; // swap for real fetchReport(videoId)
+        const res = mockReport;
         if (!alive) return;
         setReport(res);
       } catch (e: any) {
@@ -755,17 +754,18 @@ export function AnalysisReportPage({
         setLoading(false);
       }
     })();
+
     return () => {
       alive = false;
     };
   }, [videoId]);
 
-  // ── Generate AI briefing when player OR data changes ──────────────────────
   useEffect(() => {
     if (!report) return;
-    if (briefings[activePlayer]) return; // already generated
+    if (briefings[activePlayer]) return;
 
     let alive = true;
+
     (async () => {
       try {
         setBriefingLoading(true);
@@ -833,6 +833,7 @@ ${coaching?.feedbackText ?? "(없음)"}
 
         if (lastErr) throw lastErr;
         if (!alive) return;
+
         setBriefings((prev) => ({ ...prev, [activePlayer]: text || "" }));
       } catch (e: any) {
         if (!alive) return;
@@ -844,15 +845,15 @@ ${coaching?.feedbackText ?? "(없음)"}
         setBriefingLoading(false);
       }
     })();
+
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report, activePlayer]);
+  }, [report, activePlayer, briefings]);
 
-  // ── Derived UI data ───────────────────────────────────────────────────────
   const ui = useMemo(() => {
     if (!report) return null;
+
     const summary = report.data.summary;
     const playerData = report.data.players[activePlayer];
 
@@ -882,12 +883,10 @@ ${coaching?.feedbackText ?? "(없음)"}
     return { summary, heatmapZones, strokeData, abilityData, accentColor };
   }, [report, activePlayer]);
 
-  // Reset heatmap selection on player switch
   useEffect(() => {
     setSelectedHeatmapPoint(null);
   }, [activePlayer]);
 
-  // ── Loading / error states ────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -897,7 +896,10 @@ ${coaching?.feedbackText ?? "(없음)"}
           onLogout={onLogout}
           hasSelectedVideo
         />
-        <main className="container mx-auto max-w-6xl px-6 py-10">
+        <main
+          className="container mx-auto max-w-6xl px-6 py-10"
+          style={{ minHeight: `calc(100vh - ${HEADER_HEIGHT}px)` }}
+        >
           <button
             onClick={onBack}
             className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
@@ -924,7 +926,10 @@ ${coaching?.feedbackText ?? "(없음)"}
           onLogout={onLogout}
           hasSelectedVideo
         />
-        <main className="container mx-auto max-w-6xl px-6 py-10">
+        <main
+          className="container mx-auto max-w-6xl px-6 py-10"
+          style={{ minHeight: `calc(100vh - ${HEADER_HEIGHT}px)` }}
+        >
           <button
             onClick={onBack}
             className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
@@ -954,9 +959,40 @@ ${coaching?.feedbackText ?? "(없음)"}
   const aiBriefing = briefings[activePlayer];
   const isBottom = activePlayer === "bottom";
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const sidebarSections: {
+    id: SidebarSectionId;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    {
+      id: "summary",
+      label: "경기 결과",
+      icon: <Users className="size-4 shrink-0" />,
+    },
+    {
+      id: "heatmap",
+      label: "히트맵",
+      icon: <Target className="size-4 shrink-0" style={{ color: accentColor }} />,
+    },
+    {
+      id: "stroke",
+      label: "스트로크 분포",
+      icon: <Zap className="size-4 shrink-0 text-purple-500" />,
+    },
+    {
+      id: "ability",
+      label: "능력치 분석",
+      icon: <Award className="size-4 shrink-0 text-orange-500" />,
+    },
+    {
+      id: "briefing",
+      label: "AI 브리핑",
+      icon: <Bot className="size-4 shrink-0 text-blue-600" />,
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header
         currentPage="report"
         onNavigate={onNavigate}
@@ -964,299 +1000,321 @@ ${coaching?.feedbackText ?? "(없음)"}
         hasSelectedVideo
       />
 
-      <main className="container mx-auto max-w-6xl px-6 py-10">
-        {/* Back */}
-        <button
-          onClick={onBack}
-          className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
+      <div className="flex flex-1 overflow-hidden">
+        <AppSidebar
+          currentPage="report"
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          reportSections={sidebarSections.map((sec) => ({
+            id: sec.id,
+            label: sec.label,
+            icon: sec.icon,
+            onClick: () => scrollToSection(sec.id),
+          }))}
+          playerToggle={
+            <div className="w-full">
+              <PlayerToggle active={activePlayer} onChange={setActivePlayer} />
+            </div>
+          }
+        />
+
+        <main
+          ref={mainScrollRef}
+          className="flex-1 overflow-y-auto"
+          style={{ height: `calc(100vh - ${HEADER_HEIGHT}px)` }}
         >
-          ← 돌아가기
-        </button>
-
-        <div className="space-y-6">
-          {/* ── 1. Match Summary (player-independent) ── */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-5">
-              <Users className="size-4 text-gray-500" />
-              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">
-                경기 결과 요약
-              </h2>
-            </div>
-
-            {/* Score hero */}
-            <div className="flex items-center justify-center gap-6 mb-6 py-4 rounded-xl bg-gray-50">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
-                  Bottom
-                </span>
-                <span className="text-5xl font-black text-gray-900 tabular-nums">
-                  {summary.myScore}
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-2xl font-light text-gray-300 mt-1">
-                  VS
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
-                  Top
-                </span>
-                <span className="text-5xl font-black text-gray-900 tabular-nums">
-                  {summary.opponentScore}
-                </span>
-              </div>
-            </div>
-
-            {/* Meta stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
-                <Zap className="size-4 text-purple-400" />
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
-                    양측 합산 스트로크
-                  </p>
-                  <p className="text-lg font-black text-purple-600">
-                    {summary.totalStrokeCount}회
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
-                <Clock className="size-4 text-orange-400" />
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
-                    경기 시간
-                  </p>
-                  <p className="text-lg font-black text-orange-600">
-                    {summary.matchTime}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* ── 2. Player Toggle ── */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">
-                플레이어를 선택하면 아래 모든 섹션이 변경됩니다.
-              </p>
-              <PlayerToggle
-                active={activePlayer}
-                onChange={(k) => setActivePlayer(k)}
-              />
-            </div>
-            <div
-              className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border"
-              style={{
-                background: `${accentColor}10`,
-                borderColor: `${accentColor}30`,
-                color: accentColor,
-              }}
+          <div className="max-w-5xl mx-auto px-6 py-10">
+            <button
+              onClick={onBack}
+              className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
             >
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ background: accentColor }}
-              />
-              {isBottom ? "Bottom Player 분석 중" : "Top Player 분석 중"}
-            </div>
-          </div>
+              ← 돌아가기
+            </button>
 
-          {/* ── 3. Heatmap ── */}
-          <CollapsibleCard
-            title="히트맵"
-            icon={<Target className="size-4" style={{ color: accentColor }} />}
-            onExpand={() => setExpandedPanel("heatmap")}
-          >
-            <BadmintonHeatmapCourt
-              zones={heatmapZones}
-              selectedHeatmapPoint={selectedHeatmapPoint}
-              setSelectedHeatmapPoint={setSelectedHeatmapPoint}
-              onJumpToVideo={onJumpToVideo}
-              playerKey={activePlayer}
-            />
-          </CollapsibleCard>
+            <div className="space-y-6">
+              <section
+                id="section-summary"
+                className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm scroll-mt-24"
+              >
+                <div className="flex items-center gap-2 mb-5">
+                  <Users className="size-4 text-gray-500" />
+                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">
+                    경기 결과 요약
+                  </h2>
+                </div>
 
-          {/* ── 4. Stroke + Ability ── */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Stroke */}
-            <CollapsibleCard
-              title="스트로크 분포"
-              icon={<Zap className="size-4 text-purple-500" />}
-              onExpand={() => setExpandedPanel("stroke")}
-            >
-              <div className="mb-3 h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={strokeData}
-                    margin={{ top: 0, right: 16, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        fontSize: 12,
-                      }}
-                      cursor={{ fill: "rgba(0,0,0,0.03)" }}
-                    />
-                    <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={36}>
-                      {strokeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {strokeData.map((stroke) => (
-                  <div
-                    key={stroke.name}
-                    className="flex items-center justify-between rounded-lg px-3 py-2 bg-gray-50 border border-gray-100"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: stroke.color }}
-                      />
-                      <span className="text-xs font-semibold text-gray-600">
-                        {stroke.name}
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold text-gray-500">
-                      {stroke.count}회
+                <div className="flex items-center justify-center gap-6 mb-6 py-4 rounded-xl bg-gray-50">
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
+                      Bottom
+                    </span>
+                    <span className="text-5xl font-black text-gray-900 tabular-nums">
+                      {summary.myScore}
                     </span>
                   </div>
-                ))}
-              </div>
-            </CollapsibleCard>
-
-            {/* Ability */}
-            <CollapsibleCard
-              title="능력치 분석"
-              icon={<Award className="size-4 text-orange-500" />}
-              onExpand={() => setExpandedPanel("ability")}
-            >
-              <div className="mb-3 h-[200px] flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={abilityData}>
-                    <PolarGrid stroke="#f1f5f9" />
-                    <PolarAngleAxis
-                      dataKey="name"
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    />
-                    <Radar
-                      name="능력치"
-                      dataKey="value"
-                      stroke={accentColor}
-                      fill={accentColor}
-                      fillOpacity={0.35}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: 10,
-                        border: "1px solid #e5e7eb",
-                        fontSize: 12,
-                      }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-              {/* Compact grade rows — 라벨·등급·바·점수를 한 줄에 */}
-              <div className="flex flex-col divide-y divide-gray-50">
-                {abilityData.map((a) => (
-                  <AbilityGradeRow
-                    key={a.name}
-                    label={a.name}
-                    value={a.value}
-                    accentColor={accentColor}
-                  />
-                ))}
-              </div>
-            </CollapsibleCard>
-          </div>
-
-          {/* ── 5. AI Briefing ── */}
-          <section className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900">
-                <Bot className="size-4 text-blue-600" />
-                AI 브리핑
-                <span
-                  className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
-                  style={{ background: `${accentColor}15`, color: accentColor }}
-                >
-                  {isBottom ? "Bottom Player" : "Top Player"}
-                </span>
-              </h2>
-              <button
-                type="button"
-                onClick={() => setExpandedPanel("briefing")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
-              >
-                <Maximize2 className="size-3" />
-                확대
-              </button>
-            </div>
-            <div className="p-6">
-              {briefingLoading && (
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1">
-                    {[0, 150, 300].map((delay) => (
-                      <span
-                        key={delay}
-                        className="h-2 w-2 rounded-full animate-bounce"
-                        style={{
-                          backgroundColor: accentColor,
-                          animationDelay: `${delay}ms`,
-                        }}
-                      />
-                    ))}
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-2xl font-light text-gray-300 mt-1">
+                      VS
+                    </span>
                   </div>
-                  <span
-                    className="text-sm font-medium"
-                    style={{ color: accentColor }}
-                  >
-                    AI가 리포트를 요약 중입니다...
-                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
+                      Top
+                    </span>
+                    <span className="text-5xl font-black text-gray-900 tabular-nums">
+                      {summary.opponentScore}
+                    </span>
+                  </div>
                 </div>
-              )}
-              {briefingError && (
-                <p className="text-sm text-red-600">
-                  브리핑 생성 실패: {briefingError}
-                </p>
-              )}
-              {!briefingLoading && !briefingError && (
-                <MarkdownBriefing content={aiBriefing} />
-              )}
-              <p className="mt-4 text-[11px] text-gray-400">
-                * 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.
-              </p>
-            </div>
-          </section>
-        </div>
-      </main>
 
-      {/* ── Modals ── */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                    <Zap className="size-4 text-purple-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                        양측 합산 스트로크
+                      </p>
+                      <p className="text-lg font-black text-purple-600">
+                        {summary.totalStrokeCount}회
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                    <Clock className="size-4 text-orange-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                        경기 시간
+                      </p>
+                      <p className="text-lg font-black text-orange-600">
+                        {summary.matchTime}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div
+                className="flex items-center justify-end"
+                style={{
+                  background: `${accentColor}10`,
+                  borderRadius: "12px",
+                  padding: "8px 16px",
+                  border: `1px solid ${accentColor}30`,
+                }}
+              >
+                <div
+                  className="flex items-center gap-2 text-xs font-semibold"
+                  style={{ color: accentColor }}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: accentColor }}
+                  />
+                  {isBottom ? "Bottom Player 분석 중" : "Top Player 분석 중"}
+                </div>
+              </div>
+
+              <div id="section-heatmap" className="scroll-mt-24">
+                <CollapsibleCard
+                  title="히트맵"
+                  icon={<Target className="size-4" style={{ color: accentColor }} />}
+                  onExpand={() => setExpandedPanel("heatmap")}
+                >
+                  <BadmintonHeatmapCourt
+                    zones={heatmapZones}
+                    selectedHeatmapPoint={selectedHeatmapPoint}
+                    setSelectedHeatmapPoint={setSelectedHeatmapPoint}
+                    onJumpToVideo={onJumpToVideo}
+                    playerKey={activePlayer}
+                  />
+                </CollapsibleCard>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div id="section-stroke" className="scroll-mt-24">
+                  <CollapsibleCard
+                    title="스트로크 분포"
+                    icon={<Zap className="size-4 text-purple-500" />}
+                    onExpand={() => setExpandedPanel("stroke")}
+                  >
+                    <div className="mb-3 h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={strokeData}
+                          margin={{ top: 0, right: 16, left: -20, bottom: 0 }}
+                        >
+                          <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                          <XAxis
+                            dataKey="name"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          />
+                          <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              borderRadius: 10,
+                              border: "1px solid #e5e7eb",
+                              fontSize: 12,
+                            }}
+                            cursor={{ fill: "rgba(0,0,0,0.03)" }}
+                          />
+                          <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={36}>
+                            {strokeData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {strokeData.map((stroke) => (
+                        <div
+                          key={stroke.name}
+                          className="flex items-center justify-between rounded-lg px-3 py-2 bg-gray-50 border border-gray-100"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: stroke.color }}
+                            />
+                            <span className="text-xs font-semibold text-gray-600">
+                              {stroke.name}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-gray-500">
+                            {stroke.count}회
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleCard>
+                </div>
+
+                <div id="section-ability" className="scroll-mt-24">
+                  <CollapsibleCard
+                    title="능력치 분석"
+                    icon={<Award className="size-4 text-orange-500" />}
+                    onExpand={() => setExpandedPanel("ability")}
+                  >
+                    <div className="mb-3 h-[200px] flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={abilityData}>
+                          <PolarGrid stroke="#f1f5f9" />
+                          <PolarAngleAxis
+                            dataKey="name"
+                            tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          />
+                          <Radar
+                            name="능력치"
+                            dataKey="value"
+                            stroke={accentColor}
+                            fill={accentColor}
+                            fillOpacity={0.35}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              borderRadius: 10,
+                              border: "1px solid #e5e7eb",
+                              fontSize: 12,
+                            }}
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-col divide-y divide-gray-50">
+                      {abilityData.map((a) => (
+                        <AbilityGradeRow
+                          key={a.name}
+                          label={a.name}
+                          value={a.value}
+                          accentColor={accentColor}
+                        />
+                      ))}
+                    </div>
+                  </CollapsibleCard>
+                </div>
+              </div>
+
+              <section
+                id="section-briefing"
+                className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24"
+              >
+                <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                    <Bot className="size-4 text-blue-600" />
+                    AI 브리핑
+                    <span
+                      className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{
+                        background: `${accentColor}15`,
+                        color: accentColor,
+                      }}
+                    >
+                      {isBottom ? "Bottom Player" : "Top Player"}
+                    </span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPanel("briefing")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    <Maximize2 className="size-3" />
+                    확대
+                  </button>
+                </div>
+                <div className="p-6">
+                  {briefingLoading && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1">
+                        {[0, 150, 300].map((delay) => (
+                          <span
+                            key={delay}
+                            className="h-2 w-2 rounded-full animate-bounce"
+                            style={{
+                              backgroundColor: accentColor,
+                              animationDelay: `${delay}ms`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span
+                        className="text-sm font-medium"
+                        style={{ color: accentColor }}
+                      >
+                        AI가 리포트를 요약 중입니다...
+                      </span>
+                    </div>
+                  )}
+                  {briefingError && (
+                    <p className="text-sm text-red-600">
+                      브리핑 생성 실패: {briefingError}
+                    </p>
+                  )}
+                  {!briefingLoading && !briefingError && (
+                    <MarkdownBriefing content={aiBriefing} />
+                  )}
+                  <p className="mt-4 text-[11px] text-gray-400">
+                    * 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.
+                  </p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
+
       <Modal
         open={expandedPanel === "heatmap"}
         title="히트맵 상세 보기"
         onClose={() => setExpandedPanel(null)}
       >
         <p className="mb-5 text-sm text-gray-500">
-          {isBottom ? "Bottom Player" : "Top Player"}의 코트 포지션
-          히트맵입니다.
+          {isBottom ? "Bottom Player" : "Top Player"}의 코트 포지션 히트맵입니다.
         </p>
         <BadmintonHeatmapCourt
           zones={heatmapZones}

@@ -17,18 +17,7 @@ export function Header({
 }: HeaderProps) {
   const tabs = [
     { id: "dashboard" as Page, label: "대시보드", icon: LayoutDashboard },
-    {
-      id: "video" as Page,
-      label: "영상 보기",
-      icon: Play,
-      disabled: !hasSelectedVideo,
-    },
-    {
-      id: "report" as Page,
-      label: "분석 리포트",
-      icon: FileText,
-      disabled: !hasSelectedVideo,
-    },
+    
     { id: "account" as Page, label: "계정 관리", icon: User },
   ];
 
@@ -51,18 +40,15 @@ export function Header({
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = currentPage === tab.id;
-              const isDisabled = tab.disabled;
 
               return (
                 <button
                   key={tab.id}
-                  onClick={() => !isDisabled && onNavigate(tab.id)}
-                  disabled={isDisabled}
+                  onClick={() => onNavigate(tab.id)}
                   className={`flex items-center gap-2 px-4 py-4 border-b-2 transition-colors ${
                     isActive
                       ? "border-blue-600 text-blue-600"
-                      : isDisabled
-                        ? "border-transparent text-gray-400 cursor-not-allowed"
+                     
                         : "border-transparent text-gray-600 hover:text-blue-600 hover:border-gray-300"
                   }`}
                 >
