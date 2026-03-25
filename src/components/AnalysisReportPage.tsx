@@ -614,6 +614,69 @@ function scoreToBarPct(value: number): number {
   return Math.min(Math.max(value, 0), 100);
 }
 
+function ReportSummarySkeleton() {
+  return (
+    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm animate-pulse">
+      <div className="flex items-center gap-2 mb-5">
+        <div className="size-4 rounded bg-gray-200" />
+        <div className="h-4 w-24 rounded bg-gray-200" />
+      </div>
+      <div className="flex items-center justify-center gap-6 mb-6 py-6 rounded-xl bg-gray-50">
+        <div className="h-14 w-16 rounded bg-gray-200" />
+        <div className="h-6 w-10 rounded bg-gray-100" />
+        <div className="h-14 w-16 rounded bg-gray-200" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+          <div className="h-3 w-20 rounded bg-gray-200 mb-3" />
+          <div className="h-6 w-16 rounded bg-gray-200" />
+        </div>
+        <div className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+          <div className="h-3 w-16 rounded bg-gray-200 mb-3" />
+          <div className="h-6 w-20 rounded bg-gray-200" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReportCardSkeleton({ className = "" }: { className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden animate-pulse ${className}`}>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+        <div className="h-4 w-28 rounded bg-gray-200" />
+        <div className="h-8 w-14 rounded-lg bg-gray-100" />
+      </div>
+      <div className="p-6">
+        <div className="h-52 rounded-2xl bg-gray-100 mb-4" />
+        <div className="space-y-3">
+          <div className="h-3 w-full rounded bg-gray-100" />
+          <div className="h-3 w-5/6 rounded bg-gray-100" />
+          <div className="h-3 w-2/3 rounded bg-gray-100" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportBriefingSkeleton() {
+  return (
+    <section className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden animate-pulse">
+      <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4">
+        <div className="h-4 w-24 rounded bg-gray-200" />
+        <div className="h-8 w-14 rounded-lg bg-gray-100" />
+      </div>
+      <div className="p-6 space-y-3">
+        <div className="h-4 w-1/3 rounded bg-gray-200" />
+        <div className="h-3 w-full rounded bg-gray-100" />
+        <div className="h-3 w-11/12 rounded bg-gray-100" />
+        <div className="h-3 w-3/4 rounded bg-gray-100" />
+        <div className="h-3 w-5/6 rounded bg-gray-100" />
+      </div>
+    </section>
+  );
+}
+
 function AbilityGradeRow({
   label,
   value,
@@ -889,30 +952,85 @@ ${coaching?.feedbackText ?? "(없음)"}
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header
           currentPage="report"
           onNavigate={onNavigate}
           onLogout={onLogout}
           hasSelectedVideo
         />
-        <main
-          className="container mx-auto max-w-6xl px-6 py-10"
-          style={{ minHeight: `calc(100vh - ${HEADER_HEIGHT}px)` }}
-        >
-          <button
-            onClick={onBack}
-            className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+
+        <div className="flex flex-1 overflow-hidden">
+          <AppSidebar
+            currentPage="report"
+            onNavigate={onNavigate}
+            onLogout={onLogout}
+            reportSections={[
+              {
+                id: "summary",
+                label: "경기 결과",
+                icon: <Users className="size-4 shrink-0" />,
+                onClick: () => {},
+              },
+              {
+                id: "heatmap",
+                label: "히트맵",
+                icon: <Target className="size-4 shrink-0 text-blue-500" />,
+                onClick: () => {},
+              },
+              {
+                id: "stroke",
+                label: "스트로크 분포",
+                icon: <Zap className="size-4 shrink-0 text-purple-500" />,
+                onClick: () => {},
+              },
+              {
+                id: "ability",
+                label: "능력치 분석",
+                icon: <Award className="size-4 shrink-0 text-orange-500" />,
+                onClick: () => {},
+              },
+              {
+                id: "briefing",
+                label: "AI 브리핑",
+                icon: <Bot className="size-4 shrink-0 text-blue-600" />,
+                onClick: () => {},
+              },
+            ]}
+            playerToggle={<div className="w-full animate-pulse"><div className="h-16 rounded-xl bg-gray-100" /></div>}
+          />
+
+          <main
+            className="flex-1 overflow-y-auto"
+            style={{ height: `calc(100vh - ${HEADER_HEIGHT}px)` }}
           >
-            ← 돌아가기
-          </button>
-          <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center">
-            <div className="w-8 h-8 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-600 font-medium">
-              리포트 불러오는 중...
-            </p>
-          </div>
-        </main>
+            <div className="max-w-5xl mx-auto px-6 py-10">
+              <button
+                onClick={onBack}
+                className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
+              >
+                ← 돌아가기
+              </button>
+
+              <div className="space-y-6">
+                <ReportSummarySkeleton />
+
+                <div className="flex items-center justify-end rounded-xl px-4 py-2 border border-blue-100 bg-blue-50/70 animate-pulse">
+                  <div className="h-3 w-32 rounded bg-blue-100" />
+                </div>
+
+                <ReportCardSkeleton />
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <ReportCardSkeleton />
+                  <ReportCardSkeleton />
+                </div>
+
+                <ReportBriefingSkeleton />
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }

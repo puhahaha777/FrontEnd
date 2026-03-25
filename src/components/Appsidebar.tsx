@@ -40,7 +40,7 @@ interface AppSidebarProps {
     id: string;
     label: string;
     icon: React.ReactNode;
-    onClick: () => void;
+    onClick?: () => void;
   }[];
 
   playerToggle?: React.ReactNode;
@@ -289,7 +289,7 @@ export function AppSidebar({
               {reportSections?.map((sec) => (
                 <button
                   key={sec.id}
-                  onClick={sec.onClick}
+                  onClick={() => sec.onClick?.()}
                   className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600 ${
                     sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"
                   }`}

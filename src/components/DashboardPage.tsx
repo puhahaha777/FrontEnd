@@ -26,6 +26,42 @@ interface DashboardPageProps {
   hasSelectedVideo: boolean;
 }
 
+
+function DashboardStatSkeleton() {
+  return (
+    <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 animate-pulse">
+      <div className="absolute left-0 top-0 h-full w-1 bg-gray-200 rounded-l-2xl" />
+      <div className="w-11 h-11 rounded-xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="h-3 w-24 rounded bg-gray-200 mb-3" />
+        <div className="h-8 w-20 rounded bg-gray-200" />
+      </div>
+    </div>
+  );
+}
+
+function DashboardVideoItemSkeleton() {
+  return (
+    <div className="px-6 py-5 animate-pulse">
+      <div className="flex items-center gap-4">
+        <div className="w-28 h-16 rounded-xl bg-gray-200 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="h-4 w-40 rounded bg-gray-200 mb-3" />
+          <div className="flex gap-2 mb-2">
+            <div className="h-3 w-20 rounded bg-gray-100" />
+            <div className="h-3 w-16 rounded bg-gray-100" />
+          </div>
+          <div className="h-3 w-28 rounded bg-gray-100" />
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <div className="h-9 w-20 rounded-xl bg-gray-200" />
+          <div className="h-9 w-20 rounded-xl bg-gray-100" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardPage({
   onLogout,
   onViewVideo,
@@ -41,6 +77,7 @@ export function DashboardPage({
     DashboardResponse["data"]["dashboardSummary"] | null
   >(null);
   const [videos, setVideos] = useState<any[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
@@ -59,6 +96,8 @@ export function DashboardPage({
       );
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsInitialLoading(false);
     }
   }, []);
 
@@ -197,7 +236,12 @@ export function DashboardPage({
         </div>
 
         {/* ── Stats Cards ─────────────────────────────────────── */}
-        {stats && (
+        {isInitialLoading ? (
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <DashboardStatSkeleton />
+            <DashboardStatSkeleton />
+          </div>
+        ) : stats ? (
           <div className="grid grid-cols-2 gap-4 mb-8">
             {/* Total Videos */}
             <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
@@ -240,7 +284,7 @@ export function DashboardPage({
               <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-indigo-50 opacity-50 group-hover:opacity-80 transition-opacity" />
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* ── Video List ───────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -256,7 +300,13 @@ export function DashboardPage({
             </div>
           </div>
 
-          {videos.length === 0 ? (
+          {isInitialLoading ? (
+            <div className="divide-y divide-gray-100">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <DashboardVideoItemSkeleton key={index} />
+              ))}
+            </div>
+          ) : videos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
                 <Upload className="size-6 text-gray-400" />
