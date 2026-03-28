@@ -34,31 +34,33 @@ export function Header({
   const [time, setTime] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  void hasSelectedVideo;
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   useEffect(() => {
-    const iv = setInterval(() => {
+    const updateTime = () => {
       const now = new Date();
-      setTime(
-        `${now.toISOString().split("T")[0]} ` +
-        `${now.toTimeString().split(" ")[0]}:`
-      );
-    }, 1000);
+      const date = now.toISOString().split("T")[0];
+      const timePart = now.toTimeString().split(" ")[0];
+      setTime(`${date} ${timePart}:`);
+    };
 
+    updateTime();
+    const iv = setInterval(updateTime, 1000);
     return () => clearInterval(iv);
   }, []);
 
-  const initials = user?.nickname
-    ? user.nickname.slice(0, 2).toUpperCase()
-    : "?";
+  const initials = user?.nickname ? user.nickname.slice(0, 2).toUpperCase() : "?";
 
   return (
     <>
@@ -75,7 +77,7 @@ export function Header({
         style={{ boxShadow: "0 1px 0 0 rgba(0,0,0,0.04)" }}
       >
         <div className="relative h-full max-w-[1600px] mx-auto px-6">
-          {/* 좌측 상태 표시 */}
+          {/* 좌측 상태 영역 */}
           <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-4 font-mono text-xs uppercase tracking-widest overflow-hidden">
             <span className="text-[#6bba00] font-bold whitespace-nowrap">● REC</span>
             <span className="text-slate-400 hidden sm:inline-block whitespace-nowrap">
@@ -101,9 +103,8 @@ export function Header({
             </button>
           </div>
 
-          {/* 우측 메뉴 */}
+          {/* 우측 액션 */}
           <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-3">
-            {/* 대시보드 버튼을 아바타 옆으로 이동 */}
             <button
               onClick={() => onNavigate("dashboard")}
               className={`
@@ -118,7 +119,6 @@ export function Header({
               <span className="hidden sm:inline">대시보드</span>
             </button>
 
-            {/* 프로필 드롭다운 */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen((v) => !v)}

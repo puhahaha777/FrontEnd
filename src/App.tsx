@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { LoginForm } from "./components/LoginForm";
 import { OnboardingPage } from "./components/OnboardingPage";
 import { DashboardPage } from "./components/DashboardPage";
 import { VideoPlayerPage } from "./components/VideoPlayerPage";
@@ -19,23 +18,32 @@ interface UserInfo {
 
 function buildUrl(page: Page, videoId?: string | null) {
   switch (page) {
-    case "onboarding": return "/";
-    case "dashboard": return "/dashboard";
-    case "video": return videoId ? `/video/${videoId}` : "/video";
-    case "report": return videoId ? `/report/${videoId}` : "/report";
-    case "account": return "/account";
-    default: return "/";
+    case "onboarding":
+      return "/";
+    case "dashboard":
+      return "/dashboard";
+    case "video":
+      return videoId ? `/video/${videoId}` : "/video";
+    case "report":
+      return videoId ? `/report/${videoId}` : "/report";
+    case "account":
+      return "/account";
+    default:
+      return "/";
   }
 }
 
 function parseLocation(): { page: Page; videoId: string | null } {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0) return { page: "onboarding", videoId: null };
+
   const [first, second] = parts;
+
   if (first === "dashboard") return { page: "dashboard", videoId: null };
   if (first === "account") return { page: "account", videoId: null };
   if (first === "video") return { page: "video", videoId: second ?? null };
   if (first === "report") return { page: "report", videoId: second ?? null };
+
   return { page: "onboarding", videoId: null };
 }
 
@@ -47,11 +55,18 @@ export default function App() {
   const [authInitialView, setAuthInitialView] = useState<"login" | "signup" | "forgot">("login");
   const [user, setUser] = useState<UserInfo | null>(null);
 
-  const openLoginModal = () => { setAuthInitialView("login"); setIsAuthOpen(true); };
-  const openSignupModal = () => { setAuthInitialView("signup"); setIsAuthOpen(true); };
+  const openLoginModal = () => {
+    setAuthInitialView("login");
+    setIsAuthOpen(true);
+  };
+
+  const openSignupModal = () => {
+    setAuthInitialView("signup");
+    setIsAuthOpen(true);
+  };
+
   const closeAuthModal = () => setIsAuthOpen(false);
 
-  // localStorage에서 유저 정보 로드
   const loadUserFromStorage = () => {
     try {
       const raw = localStorage.getItem("user");
@@ -83,6 +98,7 @@ export default function App() {
       setCurrentPage(page);
       setSelectedVideoId(videoId);
     };
+
     apply();
     window.addEventListener("popstate", apply);
     return () => window.removeEventListener("popstate", apply);
@@ -132,7 +148,13 @@ export default function App() {
   };
 
   const handleJumpToVideo = (time: number) => {
+    void time;
     go("video", selectedVideoId);
+  };
+
+  const handleUserUpdate = (updatedUser: UserInfo) => {
+    setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
   };
 
   useEffect(() => {
@@ -143,7 +165,6 @@ export default function App() {
     }
   }, [currentPage]);
 
-  // Header에 전달할 user prop
   const headerUser = user ?? undefined;
 
   return (
@@ -195,6 +216,7 @@ export default function App() {
           onNavigate={handleNavigate}
           hasSelectedVideo={!!selectedVideoId}
           user={headerUser}
+          onUserUpdate={handleUserUpdate}
         />
       )}
 
