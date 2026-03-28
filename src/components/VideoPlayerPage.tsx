@@ -27,16 +27,22 @@ import {
   type ApiTimelineEvent,
 } from "../api/videoApi";
 
-import { AppSidebar } from "./Appsidebar";
 // ─────────────────────────────────────────────────────────────
 // 타입 정의
 // ─────────────────────────────────────────────────────────────
+
+interface UserInfo {
+  nickname?: string;
+  email?: string;
+  avatarUrl?: string;
+}
 
 interface VideoPlayerPageProps {
   videoId: string;
   onBack: () => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
+  user?: UserInfo;
 }
 
 interface Highlight {
@@ -89,7 +95,7 @@ function MiniCourtMap({ currentTime }: { currentTime: number }) {
           <span className="text-[7px] text-white/70 font-bold uppercase tracking-widest">BTM</span>
         </div>
       </div>
-      <p className="text-[9px] text-gray-400 text-center mt-1">선수 동선 미니맵</p>
+      <p className="text-[9px] text-gray-400 text-center mt-1">셔틀콕 추적</p>
     </div>
   );
 }
@@ -103,6 +109,7 @@ export function VideoPlayerPage({
   onBack,
   onNavigate,
   onLogout,
+  user,
 }: VideoPlayerPageProps) {
   // ── 재생 상태 ────────────────────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(false);
@@ -110,6 +117,10 @@ export function VideoPlayerPage({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | "score" | "rally" | "smash">("all");
+
+  // ── 사이드바 ────────────────────────────────────────────────
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [videoSectionOpen, setVideoSectionOpen] = useState(true);
 
   // ── Dual Video ───────────────────────────────────────────────
   const [videoMode, setVideoMode] = useState<VideoMode>("original");
@@ -467,6 +478,7 @@ export function VideoPlayerPage({
         onNavigate={onNavigate}
         onLogout={onLogout}
         hasSelectedVideo={true}
+        user={user}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -474,22 +486,180 @@ export function VideoPlayerPage({
         {/* ══════════════════════════════════════════════════════
             좌측 사이드바
            ══════════════════════════════════════════════════════ */}
-        <AppSidebar
-          currentPage="video"
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-          videoMode={videoMode}
-          isAnalysisAvailable={isAnalysisAvailable}
-          onSwitchToOriginal={() => {
-           if (videoMode !== "original") switchVideoMode("original");
-          }}
-              onSwitchToAnalyzed={() => {
-           if (isAnalysisAvailable && videoMode !== "analyzed") {
-              switchVideoMode("analyzed");
-           }
-         }}
-         miniMap={<MiniCourtMap currentTime={currentTime} />}
-    />
+        <aside
+          className={`
+            relative flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0
+            ${sidebarOpen ? "w-56" : "w-14"}
+          `}
+          style={{ minHeight: "calc(100vh - 64px)" }}
+        >
+          {/* 토글 버튼 */}
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            className="absolute -right-3 top-6 z-10 flex items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md transition-shadow text-gray-500 hover:text-gray-700"
+          >
+            {sidebarOpen ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          </button>
+
+          <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
+
+            {/* ── 1. 대시보드 ── */}
+            <div className={`px-3 pt-5 pb-2 ${!sidebarOpen && "px-2"}`}>
+              {sidebarOpen && (
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 px-1">
+                  네비게이션
+                </p>
+              )}
+              <button
+                onClick={() => onNavigate("dashboard")}
+                className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600
+                  ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                title={!sidebarOpen ? "대시보드" : undefined}
+              >
+                <LayoutDashboard className="size-4 shrink-0" />
+                {sidebarOpen && <span className="text-sm font-medium">대시보드</span>}
+              </button>
+            </div>
+
+            {/* ── 2. 영상 페이지 ── */}
+            <div className={`px-3 pt-1 pb-2 border-t border-gray-100 ${!sidebarOpen && "px-2"}`}>
+
+              {sidebarOpen ? (
+                /* 펼쳐진 상태: 섹션 헤더 */
+                <button
+                  onClick={() => setVideoSectionOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-1 py-2 text-left group"
+                >
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">영상 페이지</p>
+                  <ChevronRight
+                    className={`size-3 text-gray-300 transition-transform duration-200 ${videoSectionOpen ? "rotate-90" : ""}`}
+                  />
+                </button>
+              ) : (
+                /* 접힌 상태: 아이콘 */
+                <div className="py-2 flex justify-center">
+                  <Video className="size-4 text-gray-400" />
+                </div>
+              )}
+
+              {/* 펼쳐진 서브메뉴 */}
+              {sidebarOpen && videoSectionOpen && (
+                <div className="space-y-0.5 pl-1.5">
+                  {/* 2.1 원본 영상 */}
+                  <button
+                    onClick={() => videoMode !== "original" && switchVideoMode("original")}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium transition-colors
+                      ${videoMode === "original"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                      }`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${videoMode === "original" ? "bg-emerald-500" : "bg-gray-300"}`} />
+                    <span className="flex-1">원본 영상</span>
+                    {videoMode === "original" && (
+                      <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">ON</span>
+                    )}
+                  </button>
+
+                  {/* 2.2 스켈레톤 영상 */}
+                  <button
+                    onClick={() => {
+                      if (!isAnalysisAvailable || videoMode === "analyzed") return;
+                      switchVideoMode("analyzed");
+                    }}
+                    disabled={!isAnalysisAvailable}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium transition-colors
+                      ${!isAnalysisAvailable
+                        ? "text-gray-300 cursor-not-allowed"
+                        : videoMode === "analyzed"
+                          ? "bg-amber-50 text-amber-700"
+                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                      }`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      !isAnalysisAvailable ? "bg-gray-200" : videoMode === "analyzed" ? "bg-amber-500" : "bg-gray-300"
+                    }`} />
+                    <span className="flex-1">스켈레톤 영상</span>
+                    {!isAnalysisAvailable && <Loader2 className="size-3 animate-spin text-gray-300" />}
+                    {isAnalysisAvailable && videoMode === "analyzed" && (
+                      <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">ON</span>
+                    )}
+                  </button>
+
+                  {/* 2.3 미니맵 */}
+                  <div className="px-1 pt-1">
+                    <MiniCourtMap currentTime={currentTime} />
+                  </div>
+                </div>
+              )}
+
+              {/* 접힌 상태 아이콘들 */}
+              {!sidebarOpen && (
+                <div className="space-y-0.5">
+                  <button
+                    onClick={() => videoMode !== "original" && switchVideoMode("original")}
+                    className={`w-full flex justify-center px-2 py-2 rounded-lg transition-colors
+                      ${videoMode === "original" ? "bg-emerald-50 text-emerald-600" : "text-gray-400 hover:bg-gray-100"}`}
+                    title="원본 영상"
+                  >
+                    <Video className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => isAnalysisAvailable && videoMode !== "analyzed" && switchVideoMode("analyzed")}
+                    disabled={!isAnalysisAvailable}
+                    className={`w-full flex justify-center px-2 py-2 rounded-lg transition-colors
+                      ${!isAnalysisAvailable ? "text-gray-200 cursor-not-allowed" : videoMode === "analyzed" ? "bg-amber-50 text-amber-600" : "text-gray-400 hover:bg-gray-100"}`}
+                    title="스켈레톤 영상"
+                  >
+                    <Sparkles className="size-4" />
+                  </button>
+                  <button
+                    className="w-full flex justify-center px-2 py-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+                    title="미니맵"
+                  >
+                    <Map className="size-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── 3. 분석 페이지 ── */}
+            <div className={`px-3 pt-1 pb-2 border-t border-gray-100 ${!sidebarOpen && "px-2"}`}>
+              <button
+                onClick={() => onNavigate("report")}
+                className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600
+                  ${sidebarOpen ? "px-3 py-2 mt-1" : "px-2 py-2 justify-center mt-1"}`}
+                title={!sidebarOpen ? "분석 페이지" : undefined}
+              >
+                <FileText className="size-4 shrink-0" />
+                {sidebarOpen && <span className="text-sm font-medium">분석 페이지</span>}
+              </button>
+              <button
+                onClick={() => onNavigate("account")}
+                className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600
+                  ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                title={!sidebarOpen ? "계정 관리" : undefined}
+              >
+                <User className="size-4 shrink-0" />
+                {sidebarOpen && <span className="text-sm font-medium">계정 관리</span>}
+              </button>
+            </div>
+
+            {/* ── 로그아웃 ── */}
+            <div className={`mt-auto border-t border-gray-100 p-3 ${!sidebarOpen && "px-2"}`}>
+              <button
+                onClick={onLogout}
+                className={`w-full flex items-center gap-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors
+                  ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                title={!sidebarOpen ? "로그아웃" : undefined}
+              >
+                <LogOut className="size-4 shrink-0" />
+                {sidebarOpen && <span className="text-sm font-medium">로그아웃</span>}
+              </button>
+            </div>
+
+          </div>
+        </aside>
 
         {/* ══════════════════════════════════════════════════════
             메인 콘텐츠

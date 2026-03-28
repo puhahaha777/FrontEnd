@@ -8,6 +8,12 @@ import {
 } from "../api/dashboardApi";
 import { VideoItem } from "../components/VideoItem";
 
+interface UserInfo {
+  nickname?: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
 interface VideoRecord {
   id: string;
   name: string;
@@ -24,42 +30,7 @@ interface DashboardPageProps {
   onViewReport: (id: string) => void;
   onNavigate: (page: Page) => void;
   hasSelectedVideo: boolean;
-}
-
-
-function DashboardStatSkeleton() {
-  return (
-    <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 animate-pulse">
-      <div className="absolute left-0 top-0 h-full w-1 bg-gray-200 rounded-l-2xl" />
-      <div className="w-11 h-11 rounded-xl bg-gray-200 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="h-3 w-24 rounded bg-gray-200 mb-3" />
-        <div className="h-8 w-20 rounded bg-gray-200" />
-      </div>
-    </div>
-  );
-}
-
-function DashboardVideoItemSkeleton() {
-  return (
-    <div className="px-6 py-5 animate-pulse">
-      <div className="flex items-center gap-4">
-        <div className="w-28 h-16 rounded-xl bg-gray-200 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="h-4 w-40 rounded bg-gray-200 mb-3" />
-          <div className="flex gap-2 mb-2">
-            <div className="h-3 w-20 rounded bg-gray-100" />
-            <div className="h-3 w-16 rounded bg-gray-100" />
-          </div>
-          <div className="h-3 w-28 rounded bg-gray-100" />
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <div className="h-9 w-20 rounded-xl bg-gray-200" />
-          <div className="h-9 w-20 rounded-xl bg-gray-100" />
-        </div>
-      </div>
-    </div>
-  );
+  user?: UserInfo;
 }
 
 export function DashboardPage({
@@ -68,16 +39,17 @@ export function DashboardPage({
   onViewReport,
   onNavigate,
   hasSelectedVideo,
+  user,
 }: DashboardPageProps) {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [videoName, setVideoName] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   const [stats, setStats] = useState<
     DashboardResponse["data"]["dashboardSummary"] | null
   >(null);
   const [videos, setVideos] = useState<any[]>([]);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
@@ -97,7 +69,7 @@ export function DashboardPage({
     } catch (e) {
       console.error(e);
     } finally {
-      setIsInitialLoading(false);
+      setIsLoading(false);
     }
   }, []);
 
@@ -210,6 +182,7 @@ export function DashboardPage({
         onNavigate={onNavigate}
         onLogout={onLogout}
         hasSelectedVideo={hasSelectedVideo}
+        user={user}
       />
 
       <main className="container mx-auto px-6 py-10 max-w-6xl">
@@ -236,14 +209,22 @@ export function DashboardPage({
         </div>
 
         {/* ── Stats Cards ─────────────────────────────────────── */}
-        {isInitialLoading ? (
+        {isLoading ? (
+          /* 스켈레톤: 통계 카드 */
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <DashboardStatSkeleton />
-            <DashboardStatSkeleton />
+            {[0, 1].map((i) => (
+              <div key={i} className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5">
+                <div className="absolute left-0 top-0 h-full w-1 bg-gray-200 rounded-l-2xl animate-pulse" />
+                <div className="w-11 h-11 rounded-xl bg-gray-200 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-2.5 bg-gray-200 rounded animate-pulse w-24" />
+                  <div className="h-7 bg-gray-200 rounded animate-pulse w-16" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : stats ? (
           <div className="grid grid-cols-2 gap-4 mb-8">
-            {/* Total Videos */}
             <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
               <div className="absolute left-0 top-0 h-full w-1 bg-blue-500 rounded-l-2xl" />
               <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-50 flex-shrink-0">
@@ -257,15 +238,12 @@ export function DashboardPage({
                   <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">
                     {stats.totalVideos}
                   </span>
-                  <span className="text-sm font-semibold text-gray-400">
-                    개
-                  </span>
+                  <span className="text-sm font-semibold text-gray-400">개</span>
                 </div>
               </div>
               <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-blue-50 opacity-50 group-hover:opacity-80 transition-opacity" />
             </div>
 
-            {/* Total Analysis Time */}
             <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
               <div className="absolute left-0 top-0 h-full w-1 bg-indigo-500 rounded-l-2xl" />
               <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-50 flex-shrink-0">
@@ -288,11 +266,10 @@ export function DashboardPage({
 
         {/* ── Video List ───────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* List header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2.5">
               <span className="text-sm font-bold text-gray-900">최근 영상</span>
-              {videos.length > 0 && (
+              {!isLoading && videos.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold tabular-nums">
                   {videos.length}
                 </span>
@@ -300,10 +277,25 @@ export function DashboardPage({
             </div>
           </div>
 
-          {isInitialLoading ? (
+          {/* 스켈레톤: 영상 목록 */}
+          {isLoading ? (
             <div className="divide-y divide-gray-100">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <DashboardVideoItemSkeleton key={index} />
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="p-6 flex items-center gap-6">
+                  {/* 썸네일 */}
+                  <div className="w-32 h-20 rounded-lg bg-gray-200 animate-pulse shrink-0" />
+                  {/* 텍스트 */}
+                  <div className="flex-1 space-y-2.5">
+                    <div className="h-4 bg-gray-200 rounded animate-pulse w-48" />
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-32" />
+                  </div>
+                  {/* 버튼들 */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse" />
+                    <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse" />
+                    <div className="h-9 w-9 bg-gray-100 rounded-lg animate-pulse" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : videos.length === 0 ? (
@@ -314,9 +306,7 @@ export function DashboardPage({
               <p className="text-sm font-semibold text-gray-500 mb-1">
                 업로드된 영상이 없습니다
               </p>
-              <p className="text-xs text-gray-400">
-                첫 번째 경기 영상을 업로드해보세요
-              </p>
+              <p className="text-xs text-gray-400">첫 번째 경기 영상을 업로드해보세요</p>
               <button
                 onClick={() => setShowUploadModal(true)}
                 className="mt-5 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
@@ -344,15 +334,10 @@ export function DashboardPage({
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-bold text-gray-900">
-                  영상 업로드
-                </h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  경기 영상을 업로드하여 AI 분석을 받으세요
-                </p>
+                <h2 className="text-base font-bold text-gray-900">영상 업로드</h2>
+                <p className="text-xs text-gray-400 mt-0.5">경기 영상을 업로드하여 AI 분석을 받으세요</p>
               </div>
               <button
                 onClick={() => setShowUploadModal(false)}
@@ -393,9 +378,7 @@ export function DashboardPage({
                     <input
                       type="file"
                       accept="video/*"
-                      onChange={(e) =>
-                        setUploadFile(e.target.files?.[0] || null)
-                      }
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                       className="hidden"
                       id="video-upload"
                     />
@@ -407,21 +390,15 @@ export function DashboardPage({
                         <p className="text-sm font-semibold text-blue-700 text-center truncate max-w-full px-4">
                           {uploadFile.name}
                         </p>
-                        <p className="text-xs text-blue-500 mt-1">
-                          클릭하여 파일 변경
-                        </p>
+                        <p className="text-xs text-blue-500 mt-1">클릭하여 파일 변경</p>
                       </>
                     ) : (
                       <>
                         <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center mb-3">
                           <Plus className="size-5 text-gray-400" />
                         </div>
-                        <p className="text-sm font-semibold text-gray-500">
-                          클릭하여 파일 선택
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          또는 드래그 앤 드롭
-                        </p>
+                        <p className="text-sm font-semibold text-gray-500">클릭하여 파일 선택</p>
+                        <p className="text-xs text-gray-400 mt-1">또는 드래그 앤 드롭</p>
                       </>
                     )}
                   </label>
