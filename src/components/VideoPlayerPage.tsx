@@ -26,6 +26,7 @@ import {
   type MatchSummary,
   type ApiTimelineEvent,
 } from "../api/videoApi";
+import { Footer } from "./ui/footer";
 
 // ─────────────────────────────────────────────────────────────
 // 타입 정의
@@ -1029,6 +1030,7 @@ export function VideoPlayerPage({
           </div>
         </main>
       </div>
+      <Footer />
     </div>
   );
 }
