@@ -262,33 +262,144 @@ function BadmintonHeatmapCourt({
   const isBottom = playerKey === "bottom";
   const accentColor = isBottom ? "#3b82f6" : "#6366f1";
 
+  // ── 각 히트 포인트의 픽셀 좌표 계산 ──
+  const zonePixels = zones.map((zone) => ({
+    px: OL + (zone.x / 100) * OW,
+    py: OT + (zone.y / 100) * OH,
+    intensity: zone.intensity,
+    time: zone.time,
+  }));
+
+  // ── 고유 ID (플레이어별로 분리) ──
+  const uid = playerKey; // "top" | "bottom"
+
   const courtSvg = (
     <svg viewBox={`0 0 ${VW} ${VH}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <linearGradient id="cg" x1="0" y1="0" x2="0.3" y2="1">
+        {/* 코트 그라디언트 */}
+        <linearGradient id={`cg-${uid}`} x1="0" y1="0" x2="0.3" y2="1">
           <stop offset="0%" stopColor="#52954000" />
           <stop offset="100%" stopColor="#3d7230ff" />
         </linearGradient>
-        <filter id="cs">
+        <filter id={`cs-${uid}`}>
           <feDropShadow dx="0" dy="4" stdDeviation="7" floodOpacity="0.20" />
         </filter>
-        <linearGradient id="highlight-top" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`hl-top-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={accentColor} stopOpacity="0.08" />
           <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
         </linearGradient>
-        <linearGradient id="highlight-bottom" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`hl-bot-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={accentColor} stopOpacity="0" />
           <stop offset="100%" stopColor={accentColor} stopOpacity="0.08" />
         </linearGradient>
+
+        {/* ── 히트맵 블러 필터 (물웅덩이 효과) ── */}
+        <filter id={`heatblur-${uid}`} x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="28" result="blur" />
+          {/* 블러된 알파를 대비 강화해 경계를 부드럽게 */}
+          <feComponentTransfer in="blur" result="sharp">
+            <feFuncA type="gamma" amplitude="1.4" exponent="0.7" offset="0" />
+          </feComponentTransfer>
+        </filter>
+
+        {/* 히트맵 색상 매핑: 저빈도(파랑) → 중빈도(청록) → 고빈도(빨강) */}
+        {zones.map((_, i) => {
+          const t = zones[i].intensity; // 0~1
+          // 저 → 중 → 고: 파랑(0,0,255) → 청록(0,200,100) → 노랑(255,220,0) → 빨강(255,0,0)
+          let r: number, g: number, b: number;
+          if (t < 0.33) {
+            const s = t / 0.33;
+            r = Math.round(0 + s * 0);
+            g = Math.round(80 + s * 120);
+            b = Math.round(220 - s * 60);
+          } else if (t < 0.66) {
+            const s = (t - 0.33) / 0.33;
+            r = Math.round(0 + s * 255);
+            g = Math.round(200 - s * 0);
+            b = Math.round(160 - s * 160);
+          } else {
+            const s = (t - 0.66) / 0.34;
+            r = 255;
+            g = Math.round(200 - s * 200);
+            b = 0;
+          }
+          return (
+            <radialGradient
+              key={i}
+              id={`hg-${uid}-${i}`}
+              cx="50%" cy="50%" r="50%"
+            >
+              <stop offset="0%"   stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.88 * t + 0.35} />
+              <stop offset="40%"  stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.55 * t + 0.15} />
+              <stop offset="75%"  stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.22 * t} />
+              <stop offset="100%" stopColor={`rgb(${r},${g},${b})`} stopOpacity="0" />
+            </radialGradient>
+          );
+        })}
+
+        {/* 클립 패스: 코트 영역 안으로 히트맵 제한 */}
+        <clipPath id={`court-clip-${uid}`}>
+          <rect x={OL} y={OT} width={OW} height={OH} />
+        </clipPath>
       </defs>
+
+      {/* ── 코트 배경 ── */}
       <rect width={VW} height={VH} fill="#eef4f0" />
-      <rect x={OL} y={OT} width={OW} height={OH} fill="#4a8c39" filter="url(#cs)" rx="2" />
-      <rect x={OL} y={OT} width={OW} height={OH} fill="url(#cg)" rx="2" opacity="0.35" />
+      <rect x={OL} y={OT} width={OW} height={OH} fill="#4a8c39" filter={`url(#cs-${uid})`} rx="2" />
+      <rect x={OL} y={OT} width={OW} height={OH} fill={`url(#cg-${uid})`} rx="2" opacity="0.35" />
       {isBottom ? (
-        <rect x={OL} y={NY} width={OW} height={OH / 2} fill={`url(#highlight-bottom)`} />
+        <rect x={OL} y={NY} width={OW} height={OH / 2} fill={`url(#hl-bot-${uid})`} />
       ) : (
-        <rect x={OL} y={OT} width={OW} height={OH / 2} fill={`url(#highlight-top)`} />
+        <rect x={OL} y={OT} width={OW} height={OH / 2} fill={`url(#hl-top-${uid})`} />
       )}
+
+      {/* ── 히트맵 레이어 (코트 클립 안에 렌더링) ── */}
+      <g clipPath={`url(#court-clip-${uid})`}>
+        {zonePixels.map((zp, index) => {
+          // 강도에 따라 반지름 결정 — 충분히 크게 해서 번짐 효과 극대화
+          const baseR = 90 + zp.intensity * 80;
+          return (
+            <ellipse
+              key={index}
+              cx={zp.px}
+              cy={zp.py}
+              rx={baseR * 1.15}
+              ry={baseR}
+              fill={`url(#hg-${uid}-${index})`}
+              filter={`url(#heatblur-${uid})`}
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setSelectedHeatmapPoint(index);
+                if (typeof zp.time === "number") onJumpToVideo(zp.time);
+              }}
+            />
+          );
+        })}
+      </g>
+
+      {/* ── 선택 포인트 마커 ── */}
+      {selectedHeatmapPoint !== null && zonePixels[selectedHeatmapPoint] && (
+        <g clipPath={`url(#court-clip-${uid})`}>
+          <circle
+            cx={zonePixels[selectedHeatmapPoint].px}
+            cy={zonePixels[selectedHeatmapPoint].py}
+            r="10"
+            fill="none"
+            stroke={accentColor}
+            strokeWidth="2.5"
+            strokeDasharray="5 3"
+          />
+          <circle
+            cx={zonePixels[selectedHeatmapPoint].px}
+            cy={zonePixels[selectedHeatmapPoint].py}
+            r="3"
+            fill={accentColor}
+            opacity="0.8"
+          />
+        </g>
+      )}
+
+      {/* ── 코트 라인 (히트맵 위에 겹쳐서 선명하게) ── */}
       <rect x={OL} y={OT} width={OW} height={OH} fill="none" stroke="#fff" strokeWidth={LW} rx="2" />
       <line x1={SL} y1={OT} x2={SL} y2={OB} stroke="#fff" strokeWidth={LW} />
       <line x1={SR} y1={OT} x2={SR} y2={OB} stroke="#fff" strokeWidth={LW} />
@@ -301,27 +412,7 @@ function BadmintonHeatmapCourt({
       <line x1={SL} y1={SSB} x2={SR} y2={SSB} stroke="#fff" strokeWidth={LW} />
       <line x1={CX} y1={BT} x2={CX} y2={SST} stroke="#fff" strokeWidth={LW} />
       <line x1={CX} y1={SSB} x2={CX} y2={BB} stroke="#fff" strokeWidth={LW} />
-      {zones.map((zone, index) => {
-        const px = OL + (zone.x / 100) * OW;
-        const py = OT + (zone.y / 100) * OH;
-        const r = 15 + zone.intensity * 20;
-        const sel = selectedHeatmapPoint === index;
-        return (
-          <g key={index} style={{ cursor: "pointer" }} onClick={() => {
-            setSelectedHeatmapPoint(index);
-            if (typeof zone.time === "number") onJumpToVideo(zone.time);
-          }}>
-            <circle cx={px} cy={py} r={r * 2.5} fill="rgba(239,68,68,0.06)" />
-            <circle cx={px} cy={py} r={r * 1.6} fill="rgba(239,68,68,0.13)" />
-            <circle cx={px} cy={py} r={r * 1.1} fill="rgba(239,68,68,0.28)" />
-            <circle cx={px} cy={py} r={r} fill="rgba(239,68,68,0.78)" />
-            <circle cx={px} cy={py} r={r * 0.35} fill="rgba(255,255,255,0.55)" />
-            {sel && (
-              <circle cx={px} cy={py} r={r + 9} fill="none" stroke={accentColor} strokeWidth="2.5" strokeDasharray="5 3" />
-            )}
-          </g>
-        );
-      })}
+
       <text x={CX} y={OT - 14} textAnchor="middle" fontSize="15" fill="#94a3b8" fontWeight="600" letterSpacing="3">TOP</text>
       <text x={CX} y={OB + 24} textAnchor="middle" fontSize="15" fill="#64748b" fontWeight="700" letterSpacing="3">BOTTOM</text>
       {isBottom ? (
@@ -362,9 +453,9 @@ function BadmintonHeatmapCourt({
       </div>
       <div className="mt-3 flex gap-3 flex-wrap">
         {[
-          { label: "고빈도", color: "rgba(239,68,68,0.78)" },
-          { label: "중빈도", color: "rgba(239,68,68,0.42)" },
-          { label: "저빈도", color: "rgba(239,68,68,0.18)" },
+          { label: "고빈도", color: "rgba(255,60,0,0.85)" },
+          { label: "중빈도", color: "rgba(255,200,0,0.75)" },
+          { label: "저빈도", color: "rgba(0,160,200,0.65)" },
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />

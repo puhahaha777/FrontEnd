@@ -57,12 +57,40 @@ interface Highlight {
 type VideoMode = "original" | "analyzed";
 
 // ─────────────────────────────────────────────────────────────
-// 미니맵 컴포넌트 (코트 위 셔틀콕 위치 표시)
+// 미니맵 컴포넌트 — 백엔드에서 받아온 영상을 재생
+// minimapVideoUrl 이 없으면 빈 플레이스홀더를 표시
 // ─────────────────────────────────────────────────────────────
 
-function MiniCourtMap({ currentTime }: { currentTime: number }) {
-  const x = 50 + 30 * Math.sin(currentTime * 0.8);
-  const y = 50 + 25 * Math.cos(currentTime * 0.6);
+function MiniCourtMap({
+  minimapVideoUrl,
+  currentTime,
+  isPlaying,
+}: {
+  minimapVideoUrl: string | null;
+  currentTime: number;
+  isPlaying: boolean;
+}) {
+  const miniRef = useRef<HTMLVideoElement>(null);
+
+  // 메인 영상과 currentTime 동기화
+  useEffect(() => {
+    const el = miniRef.current;
+    if (!el || !minimapVideoUrl) return;
+    if (Math.abs(el.currentTime - currentTime) > 0.5) {
+      el.currentTime = currentTime;
+    }
+  }, [currentTime, minimapVideoUrl]);
+
+  // 재생/정지 동기화
+  useEffect(() => {
+    const el = miniRef.current;
+    if (!el || !minimapVideoUrl) return;
+    if (isPlaying) {
+      el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+  }, [isPlaying, minimapVideoUrl]);
 
   return (
     <div className="pt-1 pb-2">
@@ -70,33 +98,29 @@ function MiniCourtMap({ currentTime }: { currentTime: number }) {
         미니맵
       </p>
       <div
-        className="relative w-full rounded-lg overflow-hidden border border-gray-200 bg-[#4a8c39]"
+        className="relative w-full rounded-lg overflow-hidden border border-gray-200 bg-[#111]"
         style={{ aspectRatio: "1/1.8" }}
       >
-        <svg
-          viewBox="0 0 100 180"
-          className="absolute inset-0 w-full h-full"
-          preserveAspectRatio="none"
-        >
-          <rect x="10" y="8" width="80" height="164" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" rx="1" />
-          <line x1="10" y1="90" x2="90" y2="90" stroke="white" strokeWidth="2.5" />
-          <line x1="10" y1="64" x2="90" y2="64" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
-          <line x1="10" y1="116" x2="90" y2="116" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
-          <line x1="50" y1="64" x2="50" y2="116" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
-          <line x1="17" y1="8" x2="17" y2="172" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-          <line x1="83" y1="8" x2="83" y2="172" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
-          {/* 셔틀콕 */}
-          <circle cx={x} cy={y * 1.8} r="4" fill="rgba(255,235,59,0.9)" />
-          <circle cx={x} cy={y * 1.8} r="7" fill="rgba(255,235,59,0.25)" />
-        </svg>
-        <div className="absolute top-1 left-1/2 -translate-x-1/2">
-          <span className="text-[7px] text-white/50 font-bold uppercase tracking-widest">TOP</span>
-        </div>
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2">
-          <span className="text-[7px] text-white/70 font-bold uppercase tracking-widest">BTM</span>
-        </div>
+        {minimapVideoUrl ? (
+          <video
+            ref={miniRef}
+            src={minimapVideoUrl}
+            className="absolute inset-0 w-full h-full object-cover"
+            muted
+            playsInline
+            preload="metadata"
+          />
+        ) : (
+          /* 영상이 아직 없을 때 플레이스홀더 */
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gray-50">
+            <Map className="size-5 text-gray-300" />
+            <span className="text-[9px] text-gray-300 font-medium text-center leading-tight px-2">
+              분석 완료 후<br />표시됩니다
+            </span>
+          </div>
+        )}
       </div>
-      <p className="text-[9px] text-gray-400 text-center mt-1">셔틀콕 추적</p>
+      <p className="text-[9px] text-gray-400 text-center mt-1">코트 추적 영상</p>
     </div>
   );
 }
@@ -167,6 +191,7 @@ export function VideoPlayerPage({
   const analyzedVideoUrl = videoInfo?.skeletonVideoUrl ?? null;
   const originalVideoUrl = videoInfo?.videoUrl ?? null;
   const isAnalysisAvailable = !!analyzedVideoUrl;
+  const minimapVideoUrl = (videoInfo as any)?.minimapVideoUrl ?? null;
 
   // ─────────────────────────────────────────────────────────────
   // API 로드
@@ -589,7 +614,7 @@ export function VideoPlayerPage({
 
                   {/* 2.3 미니맵 */}
                   <div className="px-1 pt-1">
-                    <MiniCourtMap currentTime={currentTime} />
+                    <MiniCourtMap minimapVideoUrl={minimapVideoUrl} currentTime={currentTime} isPlaying={isPlaying} />
                   </div>
                 </div>
               )}
