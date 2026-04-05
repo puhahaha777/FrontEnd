@@ -40,20 +40,20 @@ export const mockReport: ReportResponse = {
       top: {
          positionAnalysis: { heatmapData: topHeatmap },
         strokeTypes: { smash: 2, clear: 3, drop: 0, drive: 1 },
-        abilityMetrics: { smash: 64, defense: 78, speed: 75, stamina: 80, accuracy: 71 },
+        abilityMetrics: { smash: 64, AvgRallyTime: 78, speed: 75, distance: 80, errorRate: 31 },
         aiCoaching: { feedbackText: "" },
       },
       bottom: {
         positionAnalysis: { heatmapData: bottomHeatmap },
         strokeTypes: { smash: 1, clear: 2, drop: 1, drive: 3 },
-        abilityMetrics: { smash: 75, defense: 88, speed: 77, stamina: 73, accuracy: 80 },
+        abilityMetrics: { smash: 75, AvgRallyTime: 88, speed: 77, distance: 73, errorRate: 24 },
         aiCoaching: { feedbackText: "" },
       },
     },
     // Legacy flat (bottom mirror)
     positionAnalysis: { heatmapData: bottomHeatmap },
     strokeTypes: { smash: 35, clear: 82, drop: 41, drive: 119 },
-    abilityMetrics: { smash: 85, defense: 68, speed: 72, stamina: 75, accuracy: 80 },
+    abilityMetrics: { smash: 85, AvgRallyTime: 68, speed: 72, distance: 75, errorRate: 20 },
     aiCoaching: { feedbackText: "" },
   },
 };

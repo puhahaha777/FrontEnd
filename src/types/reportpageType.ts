@@ -21,10 +21,10 @@ export type PlayerData = {
   };
   abilityMetrics: {
     smash: number;
-    defense: number;
+    AvgRallyTime: number;
     speed: number;
-    stamina: number;
-    accuracy: number;
+    distance: number;
+    errorRate: number;
   };
   aiCoaching: {
     feedbackText: string;
@@ -60,10 +60,10 @@ export type ReportResponse = {
     };
     abilityMetrics: {
       smash: number;
-      defense: number;
+      AvgRallyTime: number;
       speed: number;
-      stamina: number;
-      accuracy: number;
+      distance: number;
+      errorRate: number;
     };
     aiCoaching: {
       feedbackText: string;

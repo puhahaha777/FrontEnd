@@ -678,8 +678,8 @@ export function AnalysisReportPage({
 - Smash: ${stroke.smash}회, Clear: ${stroke.clear}회, Drop: ${stroke.drop}회, Drive: ${stroke.drive}회
 
 [${playerLabel} 능력치 (0~100)]
-- 스매시: ${ability.smash} / 수비: ${ability.defense} / 스피드: ${ability.speed}
-- 지구력: ${ability.stamina} / 정확도: ${ability.accuracy}
+- 스매시: ${ability.smash} / 평균 랠리 시간: ${ability.AvgRallyTime} / 속도: ${ability.speed}
+- 이동 거리: ${ability.distance} / 실책률: ${ability.errorRate}
 
 [기존 코치 피드백]
 ${coaching?.feedbackText ?? "(없음)"}
@@ -734,12 +734,12 @@ ${coaching?.feedbackText ?? "(없음)"}
       { name: "드라이브", count: playerData.strokeTypes.drive, color: "#f59e0b" },
     ];
     const abilityData = [
-      { name: "스매시", value: playerData.abilityMetrics.smash },
-      { name: "수비", value: playerData.abilityMetrics.defense },
-      { name: "스피드", value: playerData.abilityMetrics.speed },
-      { name: "지구력", value: playerData.abilityMetrics.stamina },
-      { name: "정확도", value: playerData.abilityMetrics.accuracy },
-    ];
+  { name: "속도", value: Number(playerData.abilityMetrics.speed) || 0 },
+  { name: "평균 랠리 시간", value: Number(playerData.abilityMetrics.AvgRallyTime) || 0 },
+  { name: "스매시", value: Number(playerData.abilityMetrics.smash) || 0 },
+  { name: "이동 거리", value: Number(playerData.abilityMetrics.distance) || 0 },
+  { name: "실책률", value: Number(playerData.abilityMetrics.errorRate) || 0 },
+];
     const accentColor = activePlayer === "bottom" ? "#3b82f6" : "#6366f1";
     return { summary, heatmapZones, strokeData, abilityData, accentColor };
   }, [report, activePlayer]);
