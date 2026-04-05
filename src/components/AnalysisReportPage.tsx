@@ -1,23 +1,26 @@
-import { useState } from 'react';
-import { 
-  MapPin, 
-  TrendingUp, 
-  Zap, 
-  Award, 
-  Bot, 
-  Clock, 
-  BarChart3, 
-  ScatterChart as ScatterIcon,
-  Target
-} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Award,
+  Bot,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  LayoutDashboard,
+  LogOut,
+  Maximize2,
+  Play,
+  Target,
+  User,
+  Users,
+  X,
+  Zap,
+} from "lucide-react";
 import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
-  PolarRadiusAxis,
   Radar,
-  ScatterChart,
-  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -26,8 +29,35 @@ import {
   BarChart,
   Bar,
   Cell,
-} from 'recharts';
-import { Header, type Page } from './Header';
+} from "recharts";
+import ReactMarkdown from "react-markdown";
+
+import { Header, type Page } from "./Header";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { mockReport } from "../types/reportMock";
+import type {
+  ReportResponse,
+  PlayerKey,
+  HeatmapPoint,
+} from "../types/reportpageType";
+import { Footer } from "./ui/footer";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config
+// ─────────────────────────────────────────────────────────────────────────────
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+const GEMINI_MODEL_CANDIDATES = ["gemini-2.5-flash", "models/gemini-2.5-flash"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types / Props
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface UserInfo {
+  nickname?: string;
+  email?: string;
+  avatarUrl?: string;
+}
 
 interface AnalysisReportPageProps {
   videoId: string;
@@ -35,7 +65,521 @@ interface AnalysisReportPageProps {
   onJumpToVideo: (time: number) => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
+  user?: UserInfo;
 }
+
+type UiHeatmapZone = {
+  x: number;
+  y: number;
+  intensity: number;
+  time?: number;
+};
+
+type ExpandedPanel = "heatmap" | "stroke" | "ability" | "briefing" | null;
+
+// 사이드바 섹션 ID
+type SidebarSectionId = "summary" | "heatmap" | "stroke" | "ability" | "briefing";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Player Toggle
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLAYERS: { key: PlayerKey; label: string }[] = [
+  { key: "bottom", label: "Bottom Player" },
+  { key: "top", label: "Top Player" },
+];
+
+function PlayerToggle({
+  active,
+  onChange,
+}: {
+  active: PlayerKey;
+  onChange: (k: PlayerKey) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+      {PLAYERS.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`
+            flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150
+            ${
+              active === key
+                ? key === "bottom"
+                  ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                  : "bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                : "text-gray-500 hover:text-gray-800"
+            }
+          `}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collapsible card
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CollapsibleCard({
+  title,
+  icon,
+  onExpand,
+  defaultOpen = true,
+  children,
+  sectionId,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  onExpand: () => void;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+  sectionId?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div
+      id={sectionId}
+      className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-6"
+    >
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 text-left flex-1 group"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+            {icon}
+            {title}
+          </span>
+          <ChevronDown
+            className={`size-4 text-gray-400 ml-1 transition-transform duration-300 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onExpand}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors shrink-0 ml-3"
+        >
+          <Maximize2 className="size-3" />
+          확대
+        </button>
+      </div>
+      <div
+        className={`transition-all duration-300 ease-in-out ${
+          open
+            ? "max-h-[2000px] opacity-100"
+            : "max-h-0 opacity-0 overflow-hidden"
+        }`}
+      >
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function Modal({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/45"
+        onClick={onClose}
+        aria-label="닫기"
+      />
+      <div className="relative z-10 w-full max-w-5xl max-h-[90vh] overflow-auto rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/95 px-6 py-4 backdrop-blur">
+          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Badminton Heatmap Court
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VW = 500;
+const VH = 1100;
+const OL = 50, OR = 450, OT = 40, OB = 1060;
+const OW = OR - OL, OH = OB - OT;
+const SI = Math.round(OW * 0.0754);
+const SL = OL + SI, SR = OR - SI;
+const BI = Math.round(OH * 0.0567);
+const BT = OT + BI, BB = OB - BI;
+const NY = OT + OH / 2;
+const SSO = Math.round(OH * 0.1478);
+const SST = NY - SSO, SSB = NY + SSO;
+const CX = (OL + OR) / 2;
+
+function BadmintonHeatmapCourt({
+  zones,
+  selectedHeatmapPoint,
+  setSelectedHeatmapPoint,
+  onJumpToVideo,
+  playerKey,
+  large = false,
+}: {
+  zones: UiHeatmapZone[];
+  selectedHeatmapPoint: number | null;
+  setSelectedHeatmapPoint: (i: number | null) => void;
+  onJumpToVideo: (t: number) => void;
+  playerKey: PlayerKey;
+  large?: boolean;
+}) {
+  const LW = 2.5;
+  const NW = 5;
+  const isBottom = playerKey === "bottom";
+  const accentColor = isBottom ? "#3b82f6" : "#6366f1";
+
+  // ── 각 히트 포인트의 픽셀 좌표 계산 ──
+  const zonePixels = zones.map((zone) => ({
+    px: OL + (zone.x / 100) * OW,
+    py: OT + (zone.y / 100) * OH,
+    intensity: zone.intensity,
+    time: zone.time,
+  }));
+
+  // ── 고유 ID (플레이어별로 분리) ──
+  const uid = playerKey; // "top" | "bottom"
+
+  const courtSvg = (
+    <svg viewBox={`0 0 ${VW} ${VH}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        {/* 코트 그라디언트 */}
+        <linearGradient id={`cg-${uid}`} x1="0" y1="0" x2="0.3" y2="1">
+          <stop offset="0%" stopColor="#52954000" />
+          <stop offset="100%" stopColor="#3d7230ff" />
+        </linearGradient>
+        <filter id={`cs-${uid}`}>
+          <feDropShadow dx="0" dy="4" stdDeviation="7" floodOpacity="0.20" />
+        </filter>
+        <linearGradient id={`hl-top-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accentColor} stopOpacity="0.08" />
+          <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id={`hl-bot-${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accentColor} stopOpacity="0" />
+          <stop offset="100%" stopColor={accentColor} stopOpacity="0.08" />
+        </linearGradient>
+
+        {/* ── 히트맵 블러 필터 (물웅덩이 효과) ── */}
+        <filter id={`heatblur-${uid}`} x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="28" result="blur" />
+          {/* 블러된 알파를 대비 강화해 경계를 부드럽게 */}
+          <feComponentTransfer in="blur" result="sharp">
+            <feFuncA type="gamma" amplitude="1.4" exponent="0.7" offset="0" />
+          </feComponentTransfer>
+        </filter>
+
+        {/* 히트맵 색상 매핑: 저빈도(파랑) → 중빈도(청록) → 고빈도(빨강) */}
+        {zones.map((_, i) => {
+          const t = zones[i].intensity; // 0~1
+          // 저 → 중 → 고: 파랑(0,0,255) → 청록(0,200,100) → 노랑(255,220,0) → 빨강(255,0,0)
+          let r: number, g: number, b: number;
+          if (t < 0.33) {
+            const s = t / 0.33;
+            r = Math.round(0 + s * 0);
+            g = Math.round(80 + s * 120);
+            b = Math.round(220 - s * 60);
+          } else if (t < 0.66) {
+            const s = (t - 0.33) / 0.33;
+            r = Math.round(0 + s * 255);
+            g = Math.round(200 - s * 0);
+            b = Math.round(160 - s * 160);
+          } else {
+            const s = (t - 0.66) / 0.34;
+            r = 255;
+            g = Math.round(200 - s * 200);
+            b = 0;
+          }
+          return (
+            <radialGradient
+              key={i}
+              id={`hg-${uid}-${i}`}
+              cx="50%" cy="50%" r="50%"
+            >
+              <stop offset="0%"   stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.88 * t + 0.35} />
+              <stop offset="40%"  stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.55 * t + 0.15} />
+              <stop offset="75%"  stopColor={`rgb(${r},${g},${b})`} stopOpacity={0.22 * t} />
+              <stop offset="100%" stopColor={`rgb(${r},${g},${b})`} stopOpacity="0" />
+            </radialGradient>
+          );
+        })}
+
+        {/* 클립 패스: 코트 영역 안으로 히트맵 제한 */}
+        <clipPath id={`court-clip-${uid}`}>
+          <rect x={OL} y={OT} width={OW} height={OH} />
+        </clipPath>
+      </defs>
+
+      {/* ── 코트 배경 ── */}
+      <rect width={VW} height={VH} fill="#eef4f0" />
+      <rect x={OL} y={OT} width={OW} height={OH} fill="#4a8c39" filter={`url(#cs-${uid})`} rx="2" />
+      <rect x={OL} y={OT} width={OW} height={OH} fill={`url(#cg-${uid})`} rx="2" opacity="0.35" />
+      {isBottom ? (
+        <rect x={OL} y={NY} width={OW} height={OH / 2} fill={`url(#hl-bot-${uid})`} />
+      ) : (
+        <rect x={OL} y={OT} width={OW} height={OH / 2} fill={`url(#hl-top-${uid})`} />
+      )}
+
+      {/* ── 히트맵 레이어 (코트 클립 안에 렌더링) ── */}
+      <g clipPath={`url(#court-clip-${uid})`}>
+        {zonePixels.map((zp, index) => {
+          // 강도에 따라 반지름 결정 — 충분히 크게 해서 번짐 효과 극대화
+          const baseR = 90 + zp.intensity * 80;
+          return (
+            <ellipse
+              key={index}
+              cx={zp.px}
+              cy={zp.py}
+              rx={baseR * 1.15}
+              ry={baseR}
+              fill={`url(#hg-${uid}-${index})`}
+              filter={`url(#heatblur-${uid})`}
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setSelectedHeatmapPoint(index);
+                if (typeof zp.time === "number") onJumpToVideo(zp.time);
+              }}
+            />
+          );
+        })}
+      </g>
+
+      {/* ── 선택 포인트 마커 ── */}
+      {selectedHeatmapPoint !== null && zonePixels[selectedHeatmapPoint] && (
+        <g clipPath={`url(#court-clip-${uid})`}>
+          <circle
+            cx={zonePixels[selectedHeatmapPoint].px}
+            cy={zonePixels[selectedHeatmapPoint].py}
+            r="10"
+            fill="none"
+            stroke={accentColor}
+            strokeWidth="2.5"
+            strokeDasharray="5 3"
+          />
+          <circle
+            cx={zonePixels[selectedHeatmapPoint].px}
+            cy={zonePixels[selectedHeatmapPoint].py}
+            r="3"
+            fill={accentColor}
+            opacity="0.8"
+          />
+        </g>
+      )}
+
+      {/* ── 코트 라인 (히트맵 위에 겹쳐서 선명하게) ── */}
+      <rect x={OL} y={OT} width={OW} height={OH} fill="none" stroke="#fff" strokeWidth={LW} rx="2" />
+      <line x1={SL} y1={OT} x2={SL} y2={OB} stroke="#fff" strokeWidth={LW} />
+      <line x1={SR} y1={OT} x2={SR} y2={OB} stroke="#fff" strokeWidth={LW} />
+      <line x1={OL} y1={BT} x2={OR} y2={BT} stroke="#fff" strokeWidth={LW} />
+      <line x1={OL} y1={BB} x2={OR} y2={BB} stroke="#fff" strokeWidth={LW} />
+      <line x1={OL} y1={NY} x2={OR} y2={NY} stroke="#fff" strokeWidth={NW} />
+      <circle cx={OL} cy={NY} r="5" fill="#fff" />
+      <circle cx={OR} cy={NY} r="5" fill="#fff" />
+      <line x1={SL} y1={SST} x2={SR} y2={SST} stroke="#fff" strokeWidth={LW} />
+      <line x1={SL} y1={SSB} x2={SR} y2={SSB} stroke="#fff" strokeWidth={LW} />
+      <line x1={CX} y1={BT} x2={CX} y2={SST} stroke="#fff" strokeWidth={LW} />
+      <line x1={CX} y1={SSB} x2={CX} y2={BB} stroke="#fff" strokeWidth={LW} />
+
+      <text x={CX} y={OT - 14} textAnchor="middle" fontSize="15" fill="#94a3b8" fontWeight="600" letterSpacing="3">TOP</text>
+      <text x={CX} y={OB + 24} textAnchor="middle" fontSize="15" fill="#64748b" fontWeight="700" letterSpacing="3">BOTTOM</text>
+      {isBottom ? (
+        <text x={CX} y={OB + 44} textAnchor="middle" fontSize="12" fill={accentColor} fontWeight="700">▲ 선택됨</text>
+      ) : (
+        <text x={CX} y={OT - 28} textAnchor="middle" fontSize="12" fill={accentColor} fontWeight="700">선택됨 ▼</text>
+      )}
+    </svg>
+  );
+
+  const infoPanel = (
+    <div className="flex flex-col justify-between py-1 min-w-0">
+      <div>
+        <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-widest">포지션 분포</p>
+        <div className="space-y-2.5">
+          {[
+            { label: "네트 앞", pct: 28, color: "#ef4444" },
+            { label: "미드 코트", pct: 45, color: "#f97316" },
+            { label: "백 바운더리", pct: 27, color: "#3b82f6" },
+          ].map(({ label, pct, color }) => (
+            <div key={label}>
+              <div className="flex justify-between mb-1">
+                <span className="text-[11px] font-medium text-gray-500">{label}</span>
+                <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{pct}%</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl p-3" style={{ background: `${accentColor}10`, border: `1px solid ${accentColor}30` }}>
+        <p className="text-[11px] font-semibold mb-1" style={{ color: accentColor }}>📍 히트 포인트</p>
+        <p className="text-[11px] leading-relaxed" style={{ color: accentColor }}>
+          {zones.length > 0 ? `총 ${zones.length}개 위치 기록됨. 점 클릭 시 영상 해당 구간으로 이동합니다.` : "히트맵 데이터가 없습니다."}
+        </p>
+      </div>
+      <div className="mt-3 flex gap-3 flex-wrap">
+        {[
+          { label: "고빈도", color: "rgba(255,60,0,0.85)" },
+          { label: "중빈도", color: "rgba(255,200,0,0.75)" },
+          { label: "저빈도", color: "rgba(0,160,200,0.65)" },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-[10px] text-gray-400 font-medium">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (large) {
+    return (
+      <div className="flex justify-center">
+        <div className="relative overflow-visible rounded-xl shadow-xl" style={{ width: "min(300px, 100%)", aspectRatio: `${VW} / ${VH}` }}>
+          {courtSvg}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-6 items-stretch">
+      <div className="relative shrink-0 overflow-visible" style={{ width: "min(175px, 36%)", aspectRatio: `${VW} / ${VH}` }}>
+        {courtSvg}
+      </div>
+      <div className="flex-1">{infoPanel}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Heatmap zone factory
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildZones(points: HeatmapPoint[]): UiHeatmapZone[] {
+  return points.map((p) => ({ x: p.x, y: p.y, intensity: p.value ?? 0.5, time: p.timeSec }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Markdown briefing
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MarkdownBriefing({ content }: { content: string }) {
+  if (!content) return <p className="text-sm text-gray-400">AI 브리핑 데이터가 없습니다.</p>;
+  return (
+    <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed
+      [&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1
+      [&_h2]:text-sm  [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1
+      [&_h3]:text-sm  [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-0.5
+      [&_p]:mb-2 [&_p]:text-gray-700
+      [&_ul]:mb-2 [&_ul]:pl-4
+      [&_li]:list-disc [&_li]:mb-0.5 [&_li]:text-gray-700
+      [&_strong]:font-semibold [&_strong]:text-blue-700">
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grade system
+// ─────────────────────────────────────────────────────────────────────────────
+
+const GRADE_THRESHOLDS: { min: number; grade: string; color: string; bg: string }[] = [
+  { min: 97, grade: "A+", color: "#059669", bg: "#d1fae5" },
+  { min: 93, grade: "A", color: "#059669", bg: "#d1fae5" },
+  { min: 90, grade: "A−", color: "#059669", bg: "#d1fae5" },
+  { min: 87, grade: "B+", color: "#2563eb", bg: "#dbeafe" },
+  { min: 83, grade: "B", color: "#2563eb", bg: "#dbeafe" },
+  { min: 80, grade: "B−", color: "#2563eb", bg: "#dbeafe" },
+  { min: 77, grade: "C+", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 73, grade: "C", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 70, grade: "C−", color: "#7c3aed", bg: "#ede9fe" },
+  { min: 67, grade: "D+", color: "#d97706", bg: "#fef3c7" },
+  { min: 63, grade: "D", color: "#d97706", bg: "#fef3c7" },
+  { min: 60, grade: "D−", color: "#d97706", bg: "#fef3c7" },
+  { min: 0, grade: "E", color: "#dc2626", bg: "#fee2e2" },
+];
+
+function scoreToGrade(value: number): { grade: string; color: string; bg: string } {
+  for (const t of GRADE_THRESHOLDS) {
+    if (value >= t.min) return { grade: t.grade, color: t.color, bg: t.bg };
+  }
+  return { grade: "E", color: "#dc2626", bg: "#fee2e2" };
+}
+
+function scoreToBarPct(value: number): number {
+  return Math.min(Math.max(value, 0), 100);
+}
+
+function AbilityGradeRow({ label, value, accentColor }: { label: string; value: number; accentColor: string }) {
+  const { grade, color, bg } = scoreToGrade(value);
+  const pct = scoreToBarPct(value);
+  return (
+    <div className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-50 transition-colors">
+      <span className="shrink-0 w-8 text-center text-xs font-black py-0.5 rounded-md" style={{ color, background: bg }}>{grade}</span>
+      <span className="shrink-0 w-12 text-xs font-semibold text-gray-600">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: accentColor }} />
+      </div>
+      <span className="shrink-0 w-8 text-right text-[10px] tabular-nums text-gray-400 font-medium">{value}</span>
+    </div>
+  );
+}
+
+function AbilityGradeCard({ label, value, accentColor }: { label: string; value: number; accentColor: string }) {
+  const { grade, color, bg } = scoreToGrade(value);
+  const pct = scoreToBarPct(value);
+  return (
+    <div className="flex flex-col gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-600">{label}</span>
+        <span className="text-xs font-black px-2 py-0.5 rounded-md min-w-[32px] text-center" style={{ color, background: bg }}>{grade}</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+        <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: accentColor }} />
+      </div>
+      <span className="text-[10px] tabular-nums text-gray-400 self-end">{value} / 100</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function AnalysisReportPage({
   videoId,
@@ -43,279 +587,553 @@ export function AnalysisReportPage({
   onJumpToVideo,
   onNavigate,
   onLogout,
+  user,
 }: AnalysisReportPageProps) {
+  // ── State ──────────────────────────────────────────────────────────────────
   const [selectedHeatmapPoint, setSelectedHeatmapPoint] = useState<number | null>(null);
+  const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
+  const [activePlayer, setActivePlayer] = useState<PlayerKey>("bottom");
 
-  // Mock data for ability pentagon
-  const abilityData = [
-    { name: '스매시', value: 85 },
-    { name: '수비', value: 72 },
-    { name: '정확도', value: 82 },
-    { name: '지구력', value: 65 },
-    { name: '스피드', value: 78 },
+  const [report, setReport] = useState<ReportResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [briefings, setBriefings] = useState<Record<PlayerKey, string>>({ top: "", bottom: "" });
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
+
+  // 사이드바
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // 섹션 refs (스크롤용)
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  const sectionRefs: Record<SidebarSectionId, React.RefObject<HTMLDivElement | null>> = {
+    summary: useRef<HTMLDivElement>(null),
+    heatmap: useRef<HTMLDivElement>(null),
+    stroke: useRef<HTMLDivElement>(null),
+    ability: useRef<HTMLDivElement>(null),
+    briefing: useRef<HTMLDivElement>(null),
+  };
+
+  const scrollToSection = (id: SidebarSectionId) => {
+    const el = document.getElementById(`section-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  // ── Fetch report ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+        const res = mockReport;
+        if (!alive) return;
+        setReport(res);
+      } catch (e: any) {
+        if (!alive) return;
+        setErrorMsg(e?.message ?? "리포트를 불러오지 못했습니다.");
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [videoId]);
+
+  // ── Generate AI briefing ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!report) return;
+    if (briefings[activePlayer]) return;
+
+    let alive = true;
+    (async () => {
+      try {
+        setBriefingLoading(true);
+        setBriefingError(null);
+
+        if (!API_KEY) throw new Error("Gemini API Key가 없습니다.");
+
+        const playerData = report.data.players[activePlayer];
+        const ability = playerData.abilityMetrics;
+        const stroke = playerData.strokeTypes;
+        const summary = report.data.summary;
+        const coaching = playerData.aiCoaching;
+        const playerLabel = activePlayer === "bottom" ? "Bottom Player" : "Top Player";
+        const playerStrokeTotal = stroke.smash + stroke.clear + stroke.drop + stroke.drive;
+
+        const prompt = `
+당신은 전문 배드민턴 코치입니다.
+아래 데이터는 경기 영상에서 분석한 [${playerLabel}] 개인의 데이터입니다.
+
+[경기 전체 개요 — 참고용, 개인 수치 아님]
+- 경기 결과(Bottom 기준): ${summary.matchOutcome} (Bottom ${summary.myScore} : Top ${summary.opponentScore})
+- 총 경기 시간: ${summary.matchTime}
+- 양측 합산 총 스트로크: ${summary.totalStrokeCount}회
+
+[${playerLabel} 개인 스트로크]
+- 개인 스트로크 합계: ${playerStrokeTotal}회
+- Smash: ${stroke.smash}회, Clear: ${stroke.clear}회, Drop: ${stroke.drop}회, Drive: ${stroke.drive}회
+
+[${playerLabel} 능력치 (0~100)]
+- 스매시: ${ability.smash} / 수비: ${ability.defense} / 스피드: ${ability.speed}
+- 지구력: ${ability.stamina} / 정확도: ${ability.accuracy}
+
+[기존 코치 피드백]
+${coaching?.feedbackText ?? "(없음)"}
+
+[출력 형식]
+- 간결하게 (모바일 친화적)
+- 섹션: ① 한 줄 총평 ② 핵심 지표 요약(불릿 3~5개) ③ 강점 TOP2 ④ 보완점 TOP2 ⑤ 추천 훈련 3가지
+- 마크다운 사용 가능
+        `.trim();
+
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        let text = "";
+        let lastErr: any = null;
+
+        for (const modelName of GEMINI_MODEL_CANDIDATES) {
+          try {
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const result = await model.generateContent(prompt);
+            text = result.response.text();
+            lastErr = null;
+            break;
+          } catch (err: any) {
+            lastErr = err;
+          }
+        }
+
+        if (lastErr) throw lastErr;
+        if (!alive) return;
+        setBriefings((prev) => ({ ...prev, [activePlayer]: text || "" }));
+      } catch (e: any) {
+        if (!alive) return;
+        setBriefingError(e?.message ?? "AI 브리핑 생성 중 오류가 발생했습니다.");
+      } finally {
+        if (!alive) return;
+        setBriefingLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report, activePlayer]);
+
+  // ── Derived UI data ───────────────────────────────────────────────────────
+  const ui = useMemo(() => {
+    if (!report) return null;
+    const summary = report.data.summary;
+    const playerData = report.data.players[activePlayer];
+    const heatmapZones = buildZones(playerData.positionAnalysis.heatmapData);
+    const strokeData = [
+      { name: "스매시", count: playerData.strokeTypes.smash, color: "#ef4444" },
+      { name: "클리어", count: playerData.strokeTypes.clear, color: "#3b82f6" },
+      { name: "드롭", count: playerData.strokeTypes.drop, color: "#10b981" },
+      { name: "드라이브", count: playerData.strokeTypes.drive, color: "#f59e0b" },
+    ];
+    const abilityData = [
+      { name: "스매시", value: playerData.abilityMetrics.smash },
+      { name: "수비", value: playerData.abilityMetrics.defense },
+      { name: "스피드", value: playerData.abilityMetrics.speed },
+      { name: "지구력", value: playerData.abilityMetrics.stamina },
+      { name: "정확도", value: playerData.abilityMetrics.accuracy },
+    ];
+    const accentColor = activePlayer === "bottom" ? "#3b82f6" : "#6366f1";
+    return { summary, heatmapZones, strokeData, abilityData, accentColor };
+  }, [report, activePlayer]);
+
+  useEffect(() => { setSelectedHeatmapPoint(null); }, [activePlayer]);
+
+  // ── Loading / error states ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo user={user} />
+        <main className="container mx-auto max-w-6xl px-6 py-10">
+          <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+            ← 돌아가기
+          </button>
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center">
+            <div className="w-8 h-8 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-gray-600 font-medium">리포트 불러오는 중...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo user={user} />
+        <main className="container mx-auto max-w-6xl px-6 py-10">
+          <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+            ← 돌아가기
+          </button>
+          <div className="rounded-xl border border-red-100 bg-red-50 p-8">
+            <p className="text-sm font-bold text-red-700">리포트를 불러오지 못했습니다.</p>
+            <p className="mt-1 text-xs text-red-600">{errorMsg}</p>
+            <button onClick={() => window.location.reload()} className="mt-4 text-sm text-red-700 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50">
+              새로고침
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!report || !ui) return null;
+
+  const { summary, heatmapZones, strokeData, abilityData, accentColor } = ui;
+  const aiBriefing = briefings[activePlayer];
+  const isBottom = activePlayer === "bottom";
+
+  // 사이드바 섹션 목록
+  const sidebarSections: { id: SidebarSectionId; label: string; icon: React.ReactNode }[] = [
+    { id: "summary", label: "경기 결과", icon: <Users className="size-4 shrink-0" /> },
+    { id: "heatmap", label: "히트맵", icon: <Target className="size-4 shrink-0" style={{ color: accentColor }} /> },
+    { id: "stroke", label: "스트로크 분포", icon: <Zap className="size-4 shrink-0 text-purple-500" /> },
+    { id: "ability", label: "능력치 분석", icon: <Award className="size-4 shrink-0 text-orange-500" /> },
+    { id: "briefing", label: "AI 브리핑", icon: <Bot className="size-4 shrink-0 text-blue-600" /> },
   ];
 
-  // Mock data for position scatter plot
-  const positionData = Array.from({ length: 50 }, (_, i) => ({
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-  }));
-
-  // Mock data for stroke types
-  const strokeData = [
-    { name: '스매시', count: 45, color: '#ef4444' },
-    { name: '클리어', count: 38, color: '#3b82f6' },
-    { name: '드롭', count: 32, color: '#10b981' },
-    { name: '드라이브', count: 28, color: '#f59e0b' },
+  // 사이드바 nav 목록
+  const navItems = [
+    { id: "dashboard" as Page, label: "대시보드", icon: <LayoutDashboard className="size-4 shrink-0" />, action: () => onNavigate("dashboard") },
+    { id: "video" as Page, label: "영상 보기", icon: <Play className="size-4 shrink-0" />, action: () => onNavigate("video") },
+    { id: "account" as Page, label: "계정 관리", icon: <User className="size-4 shrink-0" />, action: () => onNavigate("account") },
   ];
 
-  // Mock heatmap zones
-  const heatmapZones = [
-    { x: 25, y: 35, intensity: 0.8, time: 120 },
-    { x: 55, y: 55, intensity: 1.0, time: 340 },
-    { x: 75, y: 45, intensity: 0.6, time: 580 },
-    { x: 30, y: 70, intensity: 0.7, time: 720 },
-    { x: 65, y: 20, intensity: 0.5, time: 890 },
-  ];
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <Header
-        currentPage="report"
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-        hasSelectedVideo={true}
-      />
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Header currentPage="report" onNavigate={onNavigate} onLogout={onLogout} hasSelectedVideo user={user} />
 
-      <main className="container mx-auto px-6 py-10 max-w-6xl">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <Award className="size-4 text-blue-500" />
-              <div className="text-xs font-semibold text-gray-500">종합 점수</div>
+      <div className="flex flex-1 overflow-hidden">
+        {/* ══════════════════════════════════════════════════════
+            사이드바
+           ══════════════════════════════════════════════════════ */}
+        <aside
+          className={`
+            relative flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0
+            ${sidebarOpen ? "w-60" : "w-14"}
+          `}
+          style={{ minHeight: "calc(100vh - 64px)" }}
+        >
+          {/* 토글 버튼 */}
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            className="absolute -right-3 top-6 z-10 flex items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md transition-shadow text-gray-500 hover:text-gray-700"
+          >
+            {sidebarOpen ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          </button>
+
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* 네비게이션 */}
+            <div className={`px-3 pt-5 pb-3 border-b border-gray-100 ${sidebarOpen ? "" : "px-2"}`}>
+              {sidebarOpen && (
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">네비게이션</p>
+              )}
+              <div className="space-y-0.5">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={item.action}
+                    className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600 ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                    title={!sidebarOpen ? item.label : undefined}
+                  >
+                    {item.icon}
+                    {sidebarOpen && <span className="text-sm font-medium truncate">{item.label}</span>}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="text-3xl font-bold text-blue-600">85점</div>
-          </div>
 
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="size-4 text-green-500" />
-              <div className="text-xs font-semibold text-gray-500">평균 랠리 시간</div>
-            </div>
-            <div className="text-3xl font-bold text-green-600">2분 12초</div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="size-4 text-purple-500" />
-              <div className="text-xs font-semibold text-gray-500">총 스트로크</div>
-            </div>
-            <div className="text-3xl font-bold text-purple-600">165회</div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="size-4 text-orange-500" />
-              <div className="text-xs font-semibold text-gray-500">경기 시간</div>
-            </div>
-            <div className="text-3xl font-bold text-orange-600">45:23</div>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          {/* Heatmap */}
-          <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-lg font-bold mb-1 flex items-center gap-2 text-gray-900">
-              <Target className="size-5 text-blue-600" />
-              히트맵
-            </h2>
-            <p className="text-[11px] text-gray-400 mb-6 font-medium">
-              클릭하여 해당 시점의 영상으로 이동
-            </p>
-            <div className="aspect-[4/3] bg-[#f0f9ff] rounded-xl relative overflow-hidden border border-gray-100">
-              {/* Court lines */}
-              <div className="absolute inset-0">
-                <svg className="w-full h-full" viewBox="0 0 400 300">
-                  {/* Outer boundary */}
-                  <rect x="20" y="20" width="360" height="260" fill="none" stroke="#cbd5e1" strokeWidth="1" />
-                  {/* Center lines */}
-                  <line x1="200" y1="20" x2="200" y2="280" stroke="#cbd5e1" strokeWidth="1" />
-                  <line x1="20" y1="150" x2="380" y2="150" stroke="#cbd5e1" strokeWidth="1" />
-                  {/* Service lines */}
-                  <line x1="120" y1="20" x2="120" y2="280" stroke="#cbd5e1" strokeWidth="1" />
-                  <line x1="280" y1="20" x2="280" y2="280" stroke="#cbd5e1" strokeWidth="1" />
-                </svg>
+            {/* 섹션 이동 */}
+            <div className={`px-3 pt-4 pb-3 flex-1 overflow-y-auto ${sidebarOpen ? "" : "px-2"}`}>
+              {sidebarOpen && (
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">분석 섹션</p>
+              )}
+              <div className="space-y-0.5">
+                {sidebarSections.map((sec) => (
+                  <button
+                    key={sec.id}
+                    onClick={() => {
+                      if (!sidebarOpen) setSidebarOpen(true);
+                      scrollToSection(sec.id);
+                    }}
+                    className={`w-full flex items-center gap-2.5 rounded-lg transition-colors text-left text-gray-600 hover:bg-blue-50 hover:text-blue-600 ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                    title={!sidebarOpen ? sec.label : undefined}
+                  >
+                    {sec.icon}
+                    {sidebarOpen && <span className="text-sm font-medium truncate">{sec.label}</span>}
+                  </button>
+                ))}
               </div>
 
-              {/* Heatmap points */}
-              {heatmapZones.map((zone, index) => (
-                <button
-                  key={index}
-                  onClick={() => {
-                    setSelectedHeatmapPoint(index);
-                    onJumpToVideo(zone.time);
-                  }}
-                  className={`absolute rounded-full transition-all cursor-pointer hover:scale-110 active:scale-95 ${
-                    selectedHeatmapPoint === index
-                      ? 'ring-2 ring-blue-500 ring-offset-2'
-                      : ''
-                  }`}
-                  style={{
-                    left: `${zone.x}%`,
-                    top: `${zone.y}%`,
-                    width: `${30 + zone.intensity * 40}px`,
-                    height: `${30 + zone.intensity * 40}px`,
-                    transform: 'translate(-50%, -50%)',
-                    backgroundColor: `rgba(248, 113, 113, ${0.3 + zone.intensity * 0.4})`,
-                  }}
-                />
-              ))}
+              {/* 플레이어 선택 (사이드바 열렸을 때만) */}
+              {sidebarOpen && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">플레이어</p>
+                  <PlayerToggle active={activePlayer} onChange={(k) => setActivePlayer(k)} />
+                </div>
+              )}
+            </div>
+
+            {/* 로그아웃 */}
+            <div className={`border-t border-gray-100 p-3 ${sidebarOpen ? "" : "px-2"}`}>
+              <button
+                onClick={onLogout}
+                className={`w-full flex items-center gap-2.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors ${sidebarOpen ? "px-3 py-2" : "px-2 py-2 justify-center"}`}
+                title={!sidebarOpen ? "로그아웃" : undefined}
+              >
+                <LogOut className="size-4 shrink-0" />
+                {sidebarOpen && <span className="text-sm font-medium">로그아웃</span>}
+              </button>
             </div>
           </div>
+        </aside>
 
-          {/* Position Scatter Plot */}
-          <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-900">
-              <ScatterIcon className="size-5 text-indigo-600" />
-              위치 산점도
-            </h2>
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis type="number" dataKey="x" domain={[0, 100]} hide />
-                  <YAxis type="number" dataKey="y" domain={[0, 100]} hide />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                  <Scatter
-                    name="위치"
-                    data={positionData}
-                    fill="#60a5fa"
-                    fillOpacity={0.8}
-                  />
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
+        {/* ══════════════════════════════════════════════════════
+            메인 콘텐츠
+           ══════════════════════════════════════════════════════ */}
+        <main className="flex-1 overflow-y-auto" ref={mainScrollRef}>
+          <div className="max-w-5xl mx-auto px-6 py-10">
+            {/* Back */}
+            <button
+              onClick={onBack}
+              className="mb-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
+            >
+              ← 돌아가기
+            </button>
 
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          {/* Stroke Types */}
-          <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-lg font-bold mb-8 flex items-center gap-2 text-gray-900">
-              <Zap className="size-5 text-purple-600" />
-              스트로크 종류
-            </h2>
-            <div className="h-[200px] mb-8">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={strokeData} margin={{ top: 0, right: 20, left: -20, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={40}>
-                    {strokeData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-3">
-              {strokeData.map((stroke) => (
-                <div key={stroke.name} className="flex items-center justify-between px-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stroke.color }} />
-                    <span className="text-xs font-semibold text-gray-600">{stroke.name}</span>
+            <div className="space-y-6">
+              {/* ── 1. Match Summary ── */}
+              <section id="section-summary" className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm scroll-mt-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <Users className="size-4 text-gray-500" />
+                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">경기 결과 요약</h2>
+                </div>
+
+                <div className="flex items-center justify-center gap-6 mb-6 py-4 rounded-xl bg-gray-50">
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">Bottom</span>
+                    <span className="text-5xl font-black text-gray-900 tabular-nums">{summary.myScore}</span>
                   </div>
-                  <span className="text-xs font-bold text-gray-500">{stroke.count}회</span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-2xl font-light text-gray-300 mt-1">VS</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">Top</span>
+                    <span className="text-5xl font-black text-gray-900 tabular-nums">{summary.opponentScore}</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Ability Analysis */}
-          <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-900">
-              <Award className="size-5 text-orange-500" />
-              능력치 분석
-            </h2>
-            <div className="h-[240px] mb-6 flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={abilityData}>
-                  <PolarGrid stroke="#f1f5f9" />
-                  <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                  <Radar
-                    name="능력치"
-                    dataKey="value"
-                    stroke="#3b82f6"
-                    fill="#3b82f6"
-                    fillOpacity={0.5}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                    <Zap className="size-4 text-purple-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">양측 합산 스트로크</p>
+                      <p className="text-lg font-black text-purple-600">{summary.totalStrokeCount}회</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-4">
+                    <Clock className="size-4 text-orange-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">경기 시간</p>
+                      <p className="text-lg font-black text-orange-600">{summary.matchTime}</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── 2. Player indicator ── */}
+              <div
+                className="flex items-center justify-end"
+                style={{
+                  background: `${accentColor}10`,
+                  borderRadius: "12px",
+                  padding: "8px 16px",
+                  border: `1px solid ${accentColor}30`,
+                }}
+              >
+                <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: accentColor }}>
+                  <div className="w-2 h-2 rounded-full" style={{ background: accentColor }} />
+                  {isBottom ? "Bottom Player 분석 중" : "Top Player 분석 중"}
+                </div>
+              </div>
+
+              {/* ── 3. Heatmap ── */}
+              <div id="section-heatmap" className="scroll-mt-6">
+                <CollapsibleCard
+                  title="히트맵"
+                  icon={<Target className="size-4" style={{ color: accentColor }} />}
+                  onExpand={() => setExpandedPanel("heatmap")}
+                >
+                  <BadmintonHeatmapCourt
+                    zones={heatmapZones}
+                    selectedHeatmapPoint={selectedHeatmapPoint}
+                    setSelectedHeatmapPoint={setSelectedHeatmapPoint}
+                    onJumpToVideo={onJumpToVideo}
+                    playerKey={activePlayer}
                   />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-x-12 gap-y-3 px-2">
-              {abilityData.map((ability) => (
-                <div key={ability.name} className="flex items-center justify-between py-1 border-b border-gray-50">
-                  <span className="text-xs font-semibold text-gray-500">{ability.name}</span>
-                  <span className="text-xs font-bold text-blue-600">{ability.value}점</span>
+                </CollapsibleCard>
+              </div>
+
+              {/* ── 4. Stroke + Ability ── */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div id="section-stroke" className="scroll-mt-6">
+                  <CollapsibleCard
+                    title="스트로크 분포"
+                    icon={<Zap className="size-4 text-purple-500" />}
+                    onExpand={() => setExpandedPanel("stroke")}
+                  >
+                    <div className="mb-3 h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={strokeData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+                          <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                          <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
+                          <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={36}>
+                            {strokeData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {strokeData.map((stroke) => (
+                        <div key={stroke.name} className="flex items-center justify-between rounded-lg px-3 py-2 bg-gray-50 border border-gray-100">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: stroke.color }} />
+                            <span className="text-xs font-semibold text-gray-600">{stroke.name}</span>
+                          </div>
+                          <span className="text-xs font-bold text-gray-500">{stroke.count}회</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleCard>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* AI Coach Analysis */}
-        <div className="bg-[#eff6ff] rounded-2xl p-10 border border-blue-100 shadow-sm mb-6">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <Bot className="size-6 text-white" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 tracking-tight">AI 코치 분석</h2>
-          </div>
-          
-          <div className="space-y-6">
-            <div className="flex gap-8">
-              <div className="w-20 shrink-0 text-lg font-bold text-blue-600">강점</div>
-              <div className="pl-6 border-l-2 border-blue-200 text-sm text-gray-700 leading-relaxed font-medium">
-                스매시와 정확도가 뛰어납니다. 특히 전반부에서 강력한 스매시로 많은 득점을 올렸습니다.
-                네트 플레이도 안정적이며, 드롭샷의 정확도가 높습니다.
+                <div id="section-ability" className="scroll-mt-6">
+                  <CollapsibleCard
+                    title="능력치 분석"
+                    icon={<Award className="size-4 text-orange-500" />}
+                    onExpand={() => setExpandedPanel("ability")}
+                  >
+                    <div className="mb-3 h-[200px] flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={abilityData}>
+                          <PolarGrid stroke="#f1f5f9" />
+                          <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                          <Radar name="능력치" dataKey="value" stroke={accentColor} fill={accentColor} fillOpacity={0.35} />
+                          <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-col divide-y divide-gray-50">
+                      {abilityData.map((a) => (
+                        <AbilityGradeRow key={a.name} label={a.name} value={a.value} accentColor={accentColor} />
+                      ))}
+                    </div>
+                  </CollapsibleCard>
+                </div>
               </div>
-            </div>
-            <div className="flex gap-8">
-              <div className="w-20 shrink-0 text-lg font-bold text-indigo-600">개선점</div>
-              <div className="pl-6 border-l-2 border-indigo-200 text-sm text-gray-700 leading-relaxed font-medium">
-                경기 후반부로 갈수록 이동 거리가 줄어들고 지구력이 떨어지는 모습이 관찰되었습니다.
-                코트 후방에서의 수비 위치 선정을 개선하면 에너지를 절약할 수 있습니다.
-              </div>
-            </div>
-            <div className="flex gap-8">
-              <div className="w-20 shrink-0 text-lg font-bold text-purple-600">추천 훈련</div>
-              <div className="pl-6 border-l-2 border-purple-200 text-sm text-gray-700 leading-relaxed font-medium">
-                인터벌 트레이닝으로 지구력을 향상시키고, 후방 수비 포지셔닝 연습을 추천합니다.
-                또한 롱 랠리 상황에서의 체력 배분 전략을 개발해보세요.
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Match Summary */}
-        <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-          <h2 className="text-lg font-bold mb-8 text-gray-900">경기 결과 요약</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#f8fafc] rounded-2xl p-8 text-center border border-gray-50 transition-all hover:bg-[#f1f5f9]">
-              <div className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">점수</div>
-              <div className="text-4xl font-bold text-gray-800 mb-2">21 - 18</div>
-              <div className="text-sm font-bold text-green-600">승리</div>
-            </div>
-            <div className="bg-[#f8fafc] rounded-2xl p-8 text-center border border-gray-50 transition-all hover:bg-[#f1f5f9]">
-              <div className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">총 시간</div>
-              <div className="text-4xl font-bold text-blue-600">18:18</div>
+              {/* ── 5. AI Briefing ── */}
+              <section id="section-briefing" className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-6">
+                <div className="flex items-center justify-between border-b border-gray-50 px-6 py-4">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                    <Bot className="size-4 text-blue-600" />
+                    AI 브리핑
+                    <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${accentColor}15`, color: accentColor }}>
+                      {isBottom ? "Bottom Player" : "Top Player"}
+                    </span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPanel("briefing")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    <Maximize2 className="size-3" />
+                    확대
+                  </button>
+                </div>
+                <div className="p-6">
+                  {briefingLoading && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1">
+                        {[0, 150, 300].map((delay) => (
+                          <span key={delay} className="h-2 w-2 rounded-full animate-bounce" style={{ backgroundColor: accentColor, animationDelay: `${delay}ms` }} />
+                        ))}
+                      </div>
+                      <span className="text-sm font-medium" style={{ color: accentColor }}>AI가 리포트를 요약 중입니다...</span>
+                    </div>
+                  )}
+                  {briefingError && <p className="text-sm text-red-600">브리핑 생성 실패: {briefingError}</p>}
+                  {!briefingLoading && !briefingError && <MarkdownBriefing content={aiBriefing} />}
+                  <p className="mt-4 text-[11px] text-gray-400">* 이 브리핑은 경기 분석 데이터를 기반으로 자동 생성됩니다.</p>
+                </div>
+              </section>
             </div>
           </div>
+        </main>
+      </div>
+
+      {/* ── Modals ── */}
+      <Modal open={expandedPanel === "heatmap"} title="히트맵 상세 보기" onClose={() => setExpandedPanel(null)}>
+        <p className="mb-5 text-sm text-gray-500">
+          {isBottom ? "Bottom Player" : "Top Player"}의 코트 포지션 히트맵입니다.
+        </p>
+        <BadmintonHeatmapCourt zones={heatmapZones} selectedHeatmapPoint={selectedHeatmapPoint} setSelectedHeatmapPoint={setSelectedHeatmapPoint} onJumpToVideo={onJumpToVideo} playerKey={activePlayer} large />
+      </Modal>
+
+      <Modal open={expandedPanel === "stroke"} title="스트로크 분포 상세" onClose={() => setExpandedPanel(null)}>
+        <div className="h-[420px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={strokeData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+              <CartesianGrid vertical={false} stroke="#e5edf5" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: "#64748b" }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#94a3b8" }} />
+              <Tooltip contentStyle={{ borderRadius: 10 }} />
+              <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={60}>
+                {strokeData.map((entry, index) => (
+                  <Cell key={`exp-cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      </main>
+      </Modal>
+
+      <Modal open={expandedPanel === "ability"} title="능력치 분석 상세" onClose={() => setExpandedPanel(null)}>
+        <div className="h-[320px] mb-6">
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart data={abilityData}>
+              <PolarGrid stroke="#e5edf5" />
+              <PolarAngleAxis dataKey="name" tick={{ fontSize: 13, fill: "#64748b" }} />
+              <Radar name="능력치" dataKey="value" stroke={accentColor} fill={accentColor} fillOpacity={0.4} />
+              <Tooltip contentStyle={{ borderRadius: 10 }} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          {abilityData.map((a) => (
+            <AbilityGradeCard key={a.name} label={a.name} value={a.value} accentColor={accentColor} />
+          ))}
+        </div>
+      </Modal>
+
+      <Modal open={expandedPanel === "briefing"} title="AI 브리핑 상세" onClose={() => setExpandedPanel(null)}>
+        {briefingLoading && <p className="text-sm animate-pulse" style={{ color: accentColor }}>AI가 리포트를 요약 중입니다...</p>}
+        {briefingError && <p className="text-sm text-red-600">브리핑 생성 실패: {briefingError}</p>}
+        {!briefingLoading && !briefingError && <MarkdownBriefing content={aiBriefing} />}
+      </Modal>
+      <Footer />
     </div>
   );
 }
