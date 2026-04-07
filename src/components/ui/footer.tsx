@@ -5,7 +5,7 @@ export function Footer() {
 
         {/* 좌측: 브랜드 */}
         <div className="flex items-center gap-3">
-          <img src="/RallyTrack.svg" alt="RallyTrack" className="h-6 w-auto opacity-60" />
+          <img src="/RallyTrack.svg" alt="RallyTrack" className="h-11 w-auto opacity-60" />
           <span className="text-xs text-slate-400 hidden sm:block">
             배드민턴 경기 AI 분석 서비스
           </span>
