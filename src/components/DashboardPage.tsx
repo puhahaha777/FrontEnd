@@ -10,10 +10,8 @@ import {
   ChevronLeft,
   Lightbulb,
   Activity,
-  Undo2,
   RotateCcw,
   CheckCircle2,
-  Info,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -69,18 +67,19 @@ interface Point {
 }
 
 /* ─────────────────────────────────────────
-   6점 수집 가이드
+   6점 라벨 정의
 ───────────────────────────────────────── */
 const POINT_GUIDES = [
-  { label: "① 단식 코트 좌상 모서리",   color: "#3B82F6", step: "Step 1" },
-  { label: "② 단식 코트 우상 모서리",   color: "#8B5CF6", step: "Step 1" },
-  { label: "③ 단식 코트 우하 모서리",   color: "#EC4899", step: "Step 1" },
-  { label: "④ 단식 코트 좌하 모서리",   color: "#F59E0B", step: "Step 1" },
-  { label: "⑤ 네트 왼쪽 기둥 상단",     color: "#10B981", step: "Step 2" },
-  { label: "⑥ 네트 오른쪽 기둥 상단",   color: "#EF4444", step: "Step 2" },
+  { label: "Top Left",        shortLabel: "TL",   color: "#3B82F6",  netPoint: false },
+  { label: "Top Right",       shortLabel: "TR",   color: "#10B981",  netPoint: false },
+  { label: "Bottom Left",     shortLabel: "BL",   color: "#F59E0B",  netPoint: false },
+  { label: "Bottom Right",    shortLabel: "BR",   color: "#EC4899",  netPoint: false },
+  { label: "Net Left Post",   shortLabel: "NL",   color: "#8B5CF6",  netPoint: true  },
+  { label: "Net Right Post",  shortLabel: "NR",   color: "#EF4444",  netPoint: true  },
 ];
 
-type ModalStep = "upload" | "calibration";
+/* 모달 단계 */
+type ModalStep = "upload" | "frame" | "corners";
 
 /* ─────────────────────────────────────────
    스파크라인
@@ -127,7 +126,6 @@ const MOCK_TREND = {
   smash:    [62, 68, 65, 72, 70, 75, 75],
   defense:  [70, 72, 75, 73, 78, 80, 88],
   accuracy: [60, 65, 63, 70, 75, 78, 80],
-  labels:   ["6주전", "5주전", "4주전", "3주전", "2주전", "지난주", "이번주"],
 };
 
 const MOCK_ACTIVITY = [
@@ -194,6 +192,48 @@ function ActivityChartCard() {
   );
 }
 
+/* ─────────────────────────────────────────
+   스텝 인디케이터
+───────────────────────────────────────── */
+function StepIndicator({ step }: { step: ModalStep }) {
+  const steps: { key: ModalStep; label: string }[] = [
+    { key: "upload",  label: "영상 선택"   },
+    { key: "frame",   label: "프레임 선택" },
+    { key: "corners", label: "좌표 지정"   },
+  ];
+  const currentIdx = steps.findIndex((s) => s.key === step);
+
+  return (
+    <div className="flex items-center gap-0 mb-1">
+      {steps.map((s, i) => {
+        const done    = i < currentIdx;
+        const active  = i === currentIdx;
+        return (
+          <div key={s.key} className="flex items-center">
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                  done   ? "bg-green-500 border-green-500 text-white"
+                  : active ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-gray-300 text-gray-400"
+                }`}
+              >
+                {done ? <CheckCircle2 className="size-4" /> : i + 1}
+              </div>
+              <span className={`text-[10px] mt-0.5 font-medium ${active ? "text-blue-600" : done ? "text-green-600" : "text-gray-400"}`}>
+                {s.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`w-12 h-0.5 mb-4 mx-1 rounded-full transition-all ${done ? "bg-green-400" : "bg-gray-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════
    메인 컴포넌트
 ═══════════════════════════════════════════════════════ */
@@ -220,20 +260,25 @@ export function DashboardPage({
   const [videoName, setVideoName]   = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  /* ── 캘리브레이션 단계 상태 ── */
-  const [points, setPoints]               = useState<Point[]>([]);
-  const [frameIndex, setFrameIndex]       = useState(0);
-  const [totalFrames, setTotalFrames]     = useState(0);
-  const [fps, setFps]                     = useState(30);
-  const [videoSize, setVideoSize]         = useState({ w: 0, h: 0 });
-  const [isSubmitting, setIsSubmitting]   = useState(false);
-  const [submitResult, setSubmitResult]   = useState<"success" | "error" | null>(null);
+  /* ── 프레임 선택 단계 상태 ── */
+  const [frameIndex, setFrameIndex]   = useState(0);
+  const [totalFrames, setTotalFrames] = useState(0);
+  const [fps, setFps]                 = useState(30);
+  const [videoSize, setVideoSize]     = useState({ w: 0, h: 0 });
+  const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null); // 캡처된 프레임
+
+  /* ── 좌표 지정 단계 상태 ── */
+  const [points, setPoints]             = useState<Point[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<"success" | "error" | null>(null);
   const [thumbnailBlob, setThumbnailBlob] = useState<Blob | null>(null);
 
   /* ── Refs ── */
-  const videoRef    = useRef<HTMLVideoElement>(null);
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const videoUrlRef = useRef<string | null>(null);
+  const videoRef      = useRef<HTMLVideoElement>(null);
+  const frameCanvasRef = useRef<HTMLCanvasElement>(null);  // 프레임 추출용 (숨김)
+  const cornerImgRef  = useRef<HTMLImageElement>(null);    // 좌표 지정용 이미지
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null); // 좌표 오버레이용
+  const videoUrlRef   = useRef<string | null>(null);
 
   /* ─────────────────────────────────────────
      대시보드 데이터 패치
@@ -292,126 +337,157 @@ export function DashboardPage({
   };
 
   /* ─────────────────────────────────────────
-     캔버스 드로우
-  ───────────────────────────────────────── */
-  const drawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const video  = videoRef.current;
-    if (!canvas || !video) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    canvas.width  = rect.width;
-    canvas.height = rect.height;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const scaleX = canvas.width  / (videoSize.w || canvas.width);
-    const scaleY = canvas.height / (videoSize.h || canvas.height);
-
-    /* 코트 사각형 (4점) */
-    if (points.length >= 4) {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
-      ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
-      ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY);
-      ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY);
-      ctx.closePath();
-      ctx.strokeStyle = "rgba(59,130,246,0.85)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 3]);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(59,130,246,0.08)";
-      ctx.fill();
-      ctx.setLineDash([]);
-    }
-
-    /* 네트 선분 (점 5~6) */
-    if (points.length >= 6) {
-      ctx.beginPath();
-      ctx.moveTo(points[4].x * scaleX, points[4].y * scaleY);
-      ctx.lineTo(points[5].x * scaleX, points[5].y * scaleY);
-      ctx.strokeStyle = "rgba(239,68,68,0.9)";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
-
-    /* 각 점 마커 */
-    points.forEach((pt, i) => {
-      const guide = POINT_GUIDES[i];
-      const cx = pt.x * scaleX;
-      const cy = pt.y * scaleY;
-      ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-      ctx.fillStyle = guide.color + "33"; ctx.fill();
-      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-      ctx.fillStyle = guide.color; ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.font = "bold 11px sans-serif";
-      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(`${i + 1}`, cx, cy);
-    });
-  }, [points, videoSize]);
-
-  /* ─────────────────────────────────────────
-     영상 메타데이터 로드
+     영상 메타데이터 로드 (프레임 선택 단계)
   ───────────────────────────────────────── */
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || modalStep !== "calibration") return;
+    if (!video || modalStep !== "frame") return;
     const onLoaded = () => {
       setFps(30);
-      setTotalFrames(Math.floor(video.duration * 30));
+      const tf = Math.floor(video.duration * 30);
+      setTotalFrames(tf);
       setVideoSize({ w: video.videoWidth, h: video.videoHeight });
+      // 첫 프레임 자동 seek
       video.currentTime = 0;
     };
     video.addEventListener("loadedmetadata", onLoaded);
     return () => video.removeEventListener("loadedmetadata", onLoaded);
   }, [modalStep]);
 
-  /* 슬라이더 → seek → 재드로우 */
+  /* 슬라이더 → seek → 프레임 미리보기 */
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || totalFrames === 0) return;
+    if (!video || totalFrames === 0 || modalStep !== "frame") return;
     video.currentTime = frameIndex / fps;
-    const onSeeked = () => drawCanvas();
+    const onSeeked = () => {
+      const canvas = frameCanvasRef.current;
+      if (!canvas) return;
+      canvas.width  = video.videoWidth  || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setCapturedDataUrl(canvas.toDataURL("image/jpeg", 0.92));
+      }
+    };
     video.addEventListener("seeked", onSeeked);
     return () => video.removeEventListener("seeked", onSeeked);
-  }, [frameIndex, fps, totalFrames, drawCanvas]);
+  }, [frameIndex, fps, totalFrames, modalStep]);
 
-  /* 점 변경 시 재드로우 + 6점 완료 시 썸네일 자동 캡처 */
+  /* ─────────────────────────────────────────
+     오버레이 캔버스 드로우 (좌표 지정 단계)
+  ───────────────────────────────────────── */
+  const drawOverlay = useCallback(() => {
+    const canvas = overlayCanvasRef.current;
+    const img    = cornerImgRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width;
+    canvas.height = rect.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 이미지 기준 → 캔버스 스케일
+    const scaleX = canvas.width  / (videoSize.w || img.naturalWidth  || canvas.width);
+    const scaleY = canvas.height / (videoSize.h || img.naturalHeight || canvas.height);
+
+    /* 코트 사각형: points[0~3] */
+    if (points.length >= 4) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
+      ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
+      ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY); // TL→TR→BR→BL 순 (TL,TR,BL,BR)
+      ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY);
+      ctx.closePath();
+      ctx.strokeStyle = "rgba(59,130,246,0.9)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(59,130,246,0.07)";
+      ctx.fill();
+      ctx.setLineDash([]);
+    }
+
+    /* 네트 선분: points[4~5] */
+    if (points.length >= 6) {
+      ctx.beginPath();
+      ctx.moveTo(points[4].x * scaleX, points[4].y * scaleY);
+      ctx.lineTo(points[5].x * scaleX, points[5].y * scaleY);
+      ctx.strokeStyle = "rgba(239,68,68,0.95)";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    /* 각 점 마커 */
+    points.forEach((pt, i) => {
+      const g  = POINT_GUIDES[i];
+      const cx = pt.x * scaleX;
+      const cy = pt.y * scaleY;
+      // 외부 원
+      ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.fillStyle = g.color + "33"; ctx.fill();
+      // 내부 점
+      ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = g.color; ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+      // 라벨
+      ctx.font = "bold 10px sans-serif";
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(g.shortLabel, cx, cy);
+    });
+  }, [points, videoSize]);
+
   useEffect(() => {
-    if (modalStep !== "calibration") return;
-    drawCanvas();
+    if (modalStep === "corners") drawOverlay();
+  }, [points, modalStep, drawOverlay]);
 
-    if (points.length === 6) {
-      // 짧은 딜레이 후 캔버스를 Blob으로 캡처 (drawCanvas가 완료될 시간 확보)
-      const timer = setTimeout(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        canvas.toBlob(
-          (blob) => {
-            if (blob) setThumbnailBlob(blob);
-          },
+  /* ─────────────────────────────────────────
+     6점 완료 시 썸네일 Blob 생성
+  ───────────────────────────────────────── */
+  useEffect(() => {
+    if (modalStep !== "corners" || points.length !== 6) {
+      if (points.length < 6) setThumbnailBlob(null);
+      return;
+    }
+    // 오버레이 캔버스를 offscreen에 합성하여 썸네일 생성
+    const timer = setTimeout(() => {
+      const overlayCanvas = overlayCanvasRef.current;
+      if (!overlayCanvas || !capturedDataUrl) return;
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width  = overlayCanvas.width;
+      offscreen.height = overlayCanvas.height;
+      const ctx = offscreen.getContext("2d");
+      if (!ctx) return;
+
+      const bgImg = new Image();
+      bgImg.onload = () => {
+        ctx.drawImage(bgImg, 0, 0, offscreen.width, offscreen.height);
+        ctx.drawImage(overlayCanvas, 0, 0);
+        offscreen.toBlob(
+          (blob) => { if (blob) setThumbnailBlob(blob); },
           "image/jpeg",
           0.9,
         );
-      }, 80);
-      return () => clearTimeout(timer);
-    } else {
-      setThumbnailBlob(null);
-    }
-  }, [points, modalStep, drawCanvas]);
+      };
+      bgImg.src = capturedDataUrl;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [points, modalStep, capturedDataUrl]);
 
   /* ─────────────────────────────────────────
      캔버스 클릭 → 좌표 수집
   ───────────────────────────────────────── */
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (points.length >= 6) return;
-    const canvas = canvasRef.current;
+    const canvas = overlayCanvasRef.current;
+    const img    = cornerImgRef.current;
     if (!canvas) return;
     const rect   = canvas.getBoundingClientRect();
-    const scaleX = (videoSize.w || rect.width)  / rect.width;
-    const scaleY = (videoSize.h || rect.height) / rect.height;
+    const scaleX = (videoSize.w || img?.naturalWidth  || rect.width)  / rect.width;
+    const scaleY = (videoSize.h || img?.naturalHeight || rect.height) / rect.height;
     setPoints((prev) => [...prev, {
       x: Math.round((e.clientX - rect.left) * scaleX),
       y: Math.round((e.clientY - rect.top)  * scaleY),
@@ -419,7 +495,7 @@ export function DashboardPage({
   };
 
   /* ─────────────────────────────────────────
-     파일 선택 → 캘리브레이션 단계 전환
+     파일 선택 → 프레임 선택 단계
   ───────────────────────────────────────── */
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith("video/")) return;
@@ -428,8 +504,10 @@ export function DashboardPage({
     videoUrlRef.current = URL.createObjectURL(file);
     setPoints([]);
     setFrameIndex(0);
+    setCapturedDataUrl(null);
+    setThumbnailBlob(null);
     setSubmitResult(null);
-    setModalStep("calibration");
+    setModalStep("frame");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -437,6 +515,29 @@ export function DashboardPage({
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) handleFileSelect(file);
+  };
+
+  /* ─────────────────────────────────────────
+     "이 프레임 사용" → 좌표 지정 단계
+  ───────────────────────────────────────── */
+  const handleConfirmFrame = () => {
+    // 현재 프레임 dataURL이 없으면 즉시 캡처
+    if (!capturedDataUrl) {
+      const video = videoRef.current;
+      const canvas = frameCanvasRef.current;
+      if (video && canvas) {
+        canvas.width  = video.videoWidth  || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          setCapturedDataUrl(canvas.toDataURL("image/jpeg", 0.92));
+        }
+      }
+    }
+    setPoints([]);
+    setThumbnailBlob(null);
+    setModalStep("corners");
   };
 
   /* ─────────────────────────────────────────
@@ -449,8 +550,9 @@ export function DashboardPage({
     setVideoName("");
     setPoints([]);
     setFrameIndex(0);
-    setSubmitResult(null);
+    setCapturedDataUrl(null);
     setThumbnailBlob(null);
+    setSubmitResult(null);
     if (videoUrlRef.current) { URL.revokeObjectURL(videoUrlRef.current); videoUrlRef.current = null; }
   };
 
@@ -469,6 +571,7 @@ export function DashboardPage({
       date: new Date().toISOString().split("T")[0],
       duration: "업로드 중...",
       status: "uploading",
+      thumbnail: thumbnailBlob ? URL.createObjectURL(thumbnailBlob) : undefined,
     };
     setVideos((prev) => [tempVideo, ...prev]);
     closeModal();
@@ -521,7 +624,7 @@ export function DashboardPage({
       frame_height:       videoSize.h,
       court_points: points.slice(0, 4).map((p, i) => ({
         index: i + 1,
-        label: ["top_left", "top_right", "bottom_right", "bottom_left"][i],
+        label: ["top_left", "top_right", "bottom_left", "bottom_right"][i],
         x: p.x,
         y: p.y,
       })),
@@ -549,12 +652,12 @@ export function DashboardPage({
     setSubmitResult("success");
   };
 
-  /* ─────────────────────────────────────────
-     팁 내비게이션
-  ───────────────────────────────────────── */
+  /* ── 팁 내비게이션 ── */
   const handlePrevTip = () => setTipIndex((p) => (p === 0 ? BADMINTON_TIPS.length - 1 : p - 1));
   const handleNextTip = () => setTipIndex((p) => (p === BADMINTON_TIPS.length - 1 ? 0 : p + 1));
   const currentTip   = BADMINTON_TIPS[tipIndex];
+
+  /* 현재 찍어야 할 좌표 가이드 */
   const currentGuide = points.length < 6 ? POINT_GUIDES[points.length] : null;
 
   /* ─────────────────────────────────────────
@@ -760,12 +863,13 @@ export function DashboardPage({
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
 
-          {/* ── STEP 1: 파일 선택 ── */}
+          {/* ── STEP 1: 영상 선택 ── */}
           {modalStep === "upload" && (
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
               <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">영상 업로드</h2>
+                  <StepIndicator step="upload" />
+                  <h2 className="text-base font-bold text-gray-900 mt-1">영상 업로드</h2>
                   <p className="text-xs text-gray-400 mt-0.5">경기 영상을 업로드하여 AI 분석을 받으세요</p>
                 </div>
                 <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
@@ -824,21 +928,22 @@ export function DashboardPage({
             </div>
           )}
 
-          {/* ── STEP 2: 코트 영역 설정 ── */}
-          {modalStep === "calibration" && (
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[92vh] overflow-hidden">
+          {/* ── STEP 2: 프레임 선택 ── */}
+          {modalStep === "frame" && (
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
               {/* 모달 헤더 */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+              <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => { setModalStep("upload"); setPoints([]); }}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
+                    onClick={() => setModalStep("upload")}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 mt-1"
                   >
                     <ChevronLeft className="size-5" />
                   </button>
                   <div>
-                    <h2 className="text-base font-bold text-gray-900">코트 영역 설정</h2>
-                    <p className="text-xs text-gray-400">{uploadFile?.name}</p>
+                    <StepIndicator step="frame" />
+                    <h2 className="text-base font-bold text-gray-900">프레임 선택</h2>
+                    <p className="text-xs text-gray-400">코트 라인이 선명하게 보이는 프레임을 선택하세요</p>
                   </div>
                 </div>
                 <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
@@ -846,61 +951,33 @@ export function DashboardPage({
                 </button>
               </div>
 
-              <div className="overflow-y-auto">
-                {/* 안내 배너 */}
-                <div className="px-6 pt-4 pb-3">
-                  {submitResult === "success" ? (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700">
-                      <CheckCircle2 className="size-4 flex-shrink-0" />
-                      <span className="text-sm font-medium">분석 요청 완료! 잠시 후 결과를 확인할 수 있습니다.</span>
-                    </div>
-                  ) : submitResult === "error" ? (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                      <Info className="size-4 flex-shrink-0" />
-                      <span className="text-sm font-medium">전송 실패. 다시 시도해주세요.</span>
-                    </div>
-                  ) : currentGuide ? (
-                    <div
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium"
-                      style={{ borderColor: currentGuide.color + "55", backgroundColor: currentGuide.color + "11", color: currentGuide.color }}
-                    >
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentGuide.color }} />
-                      <span>{currentGuide.step} — {currentGuide.label}을(를) 클릭하세요</span>
-                      <span className="ml-auto text-xs opacity-60 font-normal">{points.length} / 6</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
-                      <CheckCircle2 className="size-4 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">6개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.</p>
-                        {thumbnailBlob && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <img
-                              src={URL.createObjectURL(thumbnailBlob)}
-                              alt="코트 썸네일 미리보기"
-                              className="h-14 rounded-lg border border-blue-200 object-cover shadow-sm"
-                            />
-                            <span className="text-xs text-blue-500 font-medium">썸네일 자동 생성됨 ✓</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div className="overflow-y-auto flex-1">
+                {/* 숨겨진 video + 프레임 추출 캔버스 */}
+                <video
+                  ref={videoRef}
+                  src={videoUrlRef.current ?? undefined}
+                  className="hidden"
+                  preload="auto"
+                  crossOrigin="anonymous"
+                />
+                <canvas ref={frameCanvasRef} className="hidden" />
 
-                {/* 숨겨진 video 태그 */}
-                <video ref={videoRef} src={videoUrlRef.current ?? undefined} className="hidden" preload="auto" crossOrigin="anonymous" />
-
-                {/* 캔버스 */}
-                <div className="px-6">
+                {/* 프레임 미리보기 */}
+                <div className="px-6 pt-4">
                   <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
-                    <canvas
-                      ref={canvasRef}
-                      className={`w-full h-full block ${points.length < 6 ? "cursor-crosshair" : "cursor-default"}`}
-                      onClick={handleCanvasClick}
-                    />
+                    {capturedDataUrl ? (
+                      <img
+                        src={capturedDataUrl}
+                        alt="선택된 프레임"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-white/40 text-sm">
+                        영상 로딩 중...
+                      </div>
+                    )}
                     <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full backdrop-blur-sm font-mono">
-                      {points.length} / 6
+                      {Math.floor(frameIndex / fps / 60)}:{String(Math.floor((frameIndex / fps) % 60)).padStart(2, "0")}
                     </div>
                   </div>
                 </div>
@@ -943,67 +1020,232 @@ export function DashboardPage({
                       <ChevronRight className="size-4" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1 text-center">코트 라인이 선명하게 보이는 프레임을 선택하세요</p>
                 </div>
 
-                {/* 점 목록 + 액션 버튼 */}
-                <div className="px-6 pb-5">
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {POINT_GUIDES.map((g, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
-                        style={
-                          points[i]
-                            ? { borderColor: g.color, backgroundColor: g.color + "15", color: g.color }
-                            : { borderColor: "#e5e7eb", color: "#9ca3af" }
-                        }
-                      >
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: points[i] ? g.color : "#d1d5db" }} />
-                        {points[i] ? `${i + 1}번 (${points[i].x}, ${points[i].y})` : `${i + 1}번 대기`}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setPoints((p) => p.slice(0, -1))}
-                      disabled={points.length === 0}
-                      className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                    >
-                      <Undo2 className="size-4" />
-                      되돌리기
-                    </button>
-                    <button
-                      onClick={() => setPoints([])}
-                      disabled={points.length === 0}
-                      className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                    >
-                      <RotateCcw className="size-4" />
-                      초기화
-                    </button>
-                    <button
-                      onClick={handleSubmit}
-                      disabled={points.length < 6 || isSubmitting}
-                      className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md shadow-blue-100"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <span className="animate-spin border-2 border-white/30 border-t-white rounded-full w-4 h-4" />
-                          처리 중...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="size-4" />
-                          분석 시작 ({points.length}/6)
-                        </>
-                      )}
-                    </button>
-                  </div>
+                {/* 버튼 */}
+                <div className="px-6 pb-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setModalStep("upload")}
+                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    ← 이전
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmFrame}
+                    disabled={!capturedDataUrl}
+                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md shadow-blue-100"
+                  >
+                    이 프레임 사용 →
+                  </button>
                 </div>
               </div>
             </div>
           )}
+
+          {/* ── STEP 3: 코트 좌표 지정 ── */}
+          {modalStep === "corners" && (
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
+              {/* 모달 헤더 */}
+              <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setModalStep("frame"); setPoints([]); setThumbnailBlob(null); }}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 mt-1"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <div>
+                    <StepIndicator step="corners" />
+                    <h2 className="text-base font-bold text-gray-900">코트 꼭짓점 지정</h2>
+                    <p className="text-xs text-gray-400">썸네일 이미지에서 코트의 네 꼭짓점을 순서대로 클릭하세요</p>
+                  </div>
+                </div>
+                <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1">
+                {/* 안내 배너 */}
+                <div className="px-6 pt-4 pb-3">
+                  {submitResult === "success" ? (
+                    <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700">
+                      <CheckCircle2 className="size-4 flex-shrink-0" />
+                      <span className="text-sm font-medium">분석 요청 완료! 잠시 후 결과를 확인할 수 있습니다.</span>
+                    </div>
+                  ) : currentGuide ? (
+                    <div
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium"
+                      style={{ borderColor: currentGuide.color + "55", backgroundColor: currentGuide.color + "11", color: currentGuide.color }}
+                    >
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentGuide.color }} />
+                      <span>
+                        {points.length + 1}번 — 이미지 위에서 <strong>{currentGuide.label}</strong>을(를) 클릭하세요
+                        {currentGuide.netPoint && <span className="ml-2 text-xs opacity-70 font-normal">(네트 기둥)</span>}
+                      </span>
+                      <span className="ml-auto text-xs opacity-60 font-normal whitespace-nowrap">{points.length} / 6</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
+                      <CheckCircle2 className="size-4 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">6개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.</p>
+                        {thumbnailBlob && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <img
+                              src={URL.createObjectURL(thumbnailBlob)}
+                              alt="코트 썸네일"
+                              className="h-12 rounded-lg border border-blue-200 object-cover shadow-sm"
+                            />
+                            <span className="text-xs text-blue-500 font-medium">썸네일 자동 생성됨 ✓</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 진행 바 */}
+                <div className="px-6 pb-3">
+                  <div className="flex gap-1">
+                    {POINT_GUIDES.map((g, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 h-1.5 rounded-full transition-all"
+                        style={{ backgroundColor: i < points.length ? g.color : "#e5e7eb" }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[10px] text-gray-400">코트 꼭짓점 (1~4)</span>
+                    <span className="text-[10px] text-gray-400">네트 기둥 (5~6)</span>
+                  </div>
+                </div>
+
+                {/* 이미지 + 오버레이 캔버스 */}
+                <div className="px-6">
+                  <div
+                    className="relative rounded-xl overflow-hidden bg-black"
+                    style={{ aspectRatio: "16/9" }}
+                  >
+                    {capturedDataUrl && (
+                      <img
+                        ref={cornerImgRef}
+                        src={capturedDataUrl}
+                        alt="코트 프레임"
+                        className="w-full h-full object-contain"
+                        onLoad={() => drawOverlay()}
+                      />
+                    )}
+                    <canvas
+                      ref={overlayCanvasRef}
+                      className={`absolute inset-0 w-full h-full ${points.length < 6 ? "cursor-crosshair" : "cursor-default"}`}
+                      onClick={handleCanvasClick}
+                    />
+                    <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full backdrop-blur-sm font-mono">
+                      {points.length} / 6
+                    </div>
+                  </div>
+                </div>
+
+                {/* 좌표 목록 */}
+                <div className="px-6 pt-4 pb-2">
+                  {/* 코트 꼭짓점 */}
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">코트 꼭짓점</p>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {POINT_GUIDES.filter((g) => !g.netPoint).map((g, i) => (
+                      <div
+                        key={g.shortLabel}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg border text-xs"
+                        style={
+                          points[i]
+                            ? { borderColor: g.color + "60", backgroundColor: g.color + "0f" }
+                            : { borderColor: "#e5e7eb", backgroundColor: "#f9fafb" }
+                        }
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: points[i] ? g.color : "#d1d5db" }} />
+                          <span className="font-bold" style={{ color: points[i] ? g.color : "#9ca3af" }}>
+                            {g.shortLabel}
+                          </span>
+                        </div>
+                        <span className="font-mono text-gray-500">
+                          {points[i] ? `(${points[i].x}, ${points[i].y})` : "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 네트 기둥 */}
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">네트 기둥</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {POINT_GUIDES.filter((g) => g.netPoint).map((g, i) => {
+                      const ptIdx = 4 + i;
+                      return (
+                        <div
+                          key={g.shortLabel}
+                          className="flex items-center justify-between px-3 py-2 rounded-lg border text-xs"
+                          style={
+                            points[ptIdx]
+                              ? { borderColor: g.color + "60", backgroundColor: g.color + "0f" }
+                              : { borderColor: "#e5e7eb", backgroundColor: "#f9fafb" }
+                          }
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: points[ptIdx] ? g.color : "#d1d5db" }} />
+                            <span className="font-bold" style={{ color: points[ptIdx] ? g.color : "#9ca3af" }}>
+                              {g.shortLabel}
+                            </span>
+                          </div>
+                          <span className="font-mono text-gray-500">
+                            {points[ptIdx] ? `(${points[ptIdx].x}, ${points[ptIdx].y})` : "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 액션 버튼 */}
+                <div className="px-6 pb-5 pt-3 flex gap-3">
+                  <button
+                    onClick={() => setPoints((p) => p.slice(0, -1))}
+                    disabled={points.length === 0}
+                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                  >
+                    ← 이전 점
+                  </button>
+                  <button
+                    onClick={() => { setPoints([]); setThumbnailBlob(null); }}
+                    disabled={points.length === 0}
+                    className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                  >
+                    <RotateCcw className="size-4" />
+                    초기화
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={points.length < 6 || isSubmitting}
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md shadow-blue-100"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="animate-spin border-2 border-white/30 border-t-white rounded-full w-4 h-4" />
+                        처리 중...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="size-4" />
+                        꼭짓점 {points.length}/6 지정됨
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>
