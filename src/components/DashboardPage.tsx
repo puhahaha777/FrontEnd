@@ -228,6 +228,7 @@ export function DashboardPage({
   const [videoSize, setVideoSize]         = useState({ w: 0, h: 0 });
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [submitResult, setSubmitResult]   = useState<"success" | "error" | null>(null);
+  const [thumbnailBlob, setThumbnailBlob] = useState<Blob | null>(null);
 
   /* ── Refs ── */
   const videoRef    = useRef<HTMLVideoElement>(null);
@@ -377,9 +378,28 @@ export function DashboardPage({
     return () => video.removeEventListener("seeked", onSeeked);
   }, [frameIndex, fps, totalFrames, drawCanvas]);
 
-  /* 점 변경 시 재드로우 */
+  /* 점 변경 시 재드로우 + 6점 완료 시 썸네일 자동 캡처 */
   useEffect(() => {
-    if (modalStep === "calibration") drawCanvas();
+    if (modalStep !== "calibration") return;
+    drawCanvas();
+
+    if (points.length === 6) {
+      // 짧은 딜레이 후 캔버스를 Blob으로 캡처 (drawCanvas가 완료될 시간 확보)
+      const timer = setTimeout(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.toBlob(
+          (blob) => {
+            if (blob) setThumbnailBlob(blob);
+          },
+          "image/jpeg",
+          0.9,
+        );
+      }, 80);
+      return () => clearTimeout(timer);
+    } else {
+      setThumbnailBlob(null);
+    }
   }, [points, modalStep, drawCanvas]);
 
   /* ─────────────────────────────────────────
@@ -430,6 +450,7 @@ export function DashboardPage({
     setPoints([]);
     setFrameIndex(0);
     setSubmitResult(null);
+    setThumbnailBlob(null);
     if (videoUrlRef.current) { URL.revokeObjectURL(videoUrlRef.current); videoUrlRef.current = null; }
   };
 
@@ -459,6 +480,9 @@ export function DashboardPage({
       formData.append("videoFile", uploadFile);
       formData.append("title", videoName || uploadFile.name);
       formData.append("matchDate", new Date().toISOString().split("T")[0]);
+      if (thumbnailBlob) {
+        formData.append("thumbnailImage", thumbnailBlob, "thumbnail.jpg");
+      }
 
       const token = localStorage.getItem("accessToken");
       const res = await fetch("http://localhost:8080/api/v1/videos", {
@@ -845,9 +869,21 @@ export function DashboardPage({
                       <span className="ml-auto text-xs opacity-60 font-normal">{points.length} / 6</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
-                      <CheckCircle2 className="size-4 flex-shrink-0" />
-                      <span className="text-sm font-medium">6개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.</span>
+                    <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
+                      <CheckCircle2 className="size-4 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">6개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.</p>
+                        {thumbnailBlob && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <img
+                              src={URL.createObjectURL(thumbnailBlob)}
+                              alt="코트 썸네일 미리보기"
+                              className="h-14 rounded-lg border border-blue-200 object-cover shadow-sm"
+                            />
+                            <span className="text-xs text-blue-500 font-medium">썸네일 자동 생성됨 ✓</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
