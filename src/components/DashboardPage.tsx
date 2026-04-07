@@ -143,10 +143,10 @@ const MOCK_ACTIVITY = [
 ───────────────────────────────────────── */
 function ActivityChartCard() {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
       <div className="flex items-center gap-2 mb-2">
         <Activity className="size-4 text-blue-500" />
-        <h2 className="text-sm font-bold text-gray-900">활동 통계</h2>
+        <h2 className="text-sm font-semibold text-slate-800">활동 통계</h2>
         <span className="ml-auto text-[10px] text-gray-400 font-mono">최근 7일 · 사용/업로드 추이</span>
       </div>
       <p className="text-xs text-gray-400 mb-5">사이트 사용 횟수와 업로드된 영상 수를 한 번에 확인할 수 있습니다.</p>
@@ -664,7 +664,7 @@ export function DashboardPage({
      렌더
   ───────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header
         currentPage="dashboard"
         onNavigate={onNavigate}
@@ -673,17 +673,17 @@ export function DashboardPage({
         user={user}
       />
 
-      <main className="flex-1 container mx-auto px-6 py-10 max-w-6xl">
-        {/* 헤더 */}
-        <div className="flex items-end justify-between mb-8">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-10">
+        {/* 페이지 헤더 */}
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <p className="text-xs font-bold text-blue-500 uppercase tracking-[0.15em] mb-1">내 경기 기록</p>
-            <h1 className="text-3xl font-black text-gray-900 leading-tight">영상 대시보드</h1>
-            <p className="mt-1.5 text-sm text-gray-400 font-medium">업로드한 경기 영상과 AI 분석 리포트를 관리하세요</p>
+            <p className="text-xs font-semibold text-blue-500 tracking-widest uppercase mb-1">My Dashboard</p>
+            <h1 className="text-2xl font-bold text-slate-900">영상 대시보드</h1>
+            <p className="mt-1 text-sm text-slate-500">업로드한 경기 영상과 AI 분석 리포트를 관리하세요</p>
           </div>
           <button
             onClick={() => { setShowUploadModal(true); setModalStep("upload"); }}
-            className="flex items-center gap-2.5 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-200 text-sm font-semibold"
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-sm text-sm font-semibold"
           >
             <Upload className="size-4" />
             영상 업로드
@@ -694,44 +694,37 @@ export function DashboardPage({
         {isLoading ? (
           <div className="grid grid-cols-2 gap-4 mb-8">
             {[0, 1].map((i) => (
-              <div key={i} className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5">
-                <div className="absolute left-0 top-0 h-full w-1 bg-gray-200 rounded-l-2xl animate-pulse" />
-                <div className="w-11 h-11 rounded-xl bg-gray-200 animate-pulse shrink-0" />
+              <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 animate-pulse shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-2.5 bg-gray-200 rounded animate-pulse w-24" />
-                  <div className="h-7 bg-gray-200 rounded animate-pulse w-16" />
+                  <div className="h-2.5 bg-slate-100 rounded-full animate-pulse w-24" />
+                  <div className="h-6 bg-slate-100 rounded-full animate-pulse w-14" />
                 </div>
               </div>
             ))}
           </div>
         ) : stats ? (
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
-              <div className="absolute left-0 top-0 h-full w-1 bg-blue-500 rounded-l-2xl" />
-              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-50 flex-shrink-0">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex items-center gap-4 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
                 <Film className="size-5 text-blue-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">총 업로드 영상</p>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">{stats.totalVideos}</span>
-                  <span className="text-sm font-semibold text-gray-400">개</span>
+                <p className="text-xs font-medium text-slate-400 mb-1">총 업로드 영상</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{stats.totalVideos}</span>
+                  <span className="text-sm text-slate-400 ml-0.5">개</span>
                 </div>
               </div>
-              <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-blue-50 opacity-50 group-hover:opacity-80 transition-opacity" />
             </div>
-            <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center gap-5 group hover:shadow-md transition-shadow">
-              <div className="absolute left-0 top-0 h-full w-1 bg-indigo-500 rounded-l-2xl" />
-              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-50 flex-shrink-0">
-                <Clock className="size-5 text-indigo-600" />
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex items-center gap-4 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center shrink-0">
+                <Clock className="size-5 text-violet-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">총 영상 시간</p>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-black text-gray-900 tabular-nums leading-none">{stats.totalAnalysisTime}</span>
-                </div>
+                <p className="text-xs font-medium text-slate-400 mb-1">총 영상 시간</p>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{stats.totalAnalysisTime}</span>
               </div>
-              <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-indigo-50 opacity-50 group-hover:opacity-80 transition-opacity" />
             </div>
           </div>
         ) : null}
@@ -740,11 +733,11 @@ export function DashboardPage({
 
         {/* 퍼포먼스 트렌드 + 팁 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <div className="flex items-center gap-2 mb-5">
               <TrendingUp className="size-4 text-emerald-500" />
-              <h2 className="text-sm font-bold text-gray-900">퍼포먼스 트렌드</h2>
-              <span className="ml-auto text-[10px] text-gray-400 font-mono">최근 7주 · 분석 데이터 기반</span>
+              <h2 className="text-sm font-semibold text-slate-800">퍼포먼스 트렌드</h2>
+              <span className="ml-auto text-[10px] text-slate-400">최근 7주 · 분석 데이터 기반</span>
             </div>
             <div className="space-y-4">
               {[
@@ -768,7 +761,7 @@ export function DashboardPage({
                 );
               })}
             </div>
-            <p className="mt-4 text-[10px] text-gray-300 font-mono">* 트렌드는 분석된 경기 리포트 데이터를 기반으로 자동 계산됩니다.</p>
+            <p className="mt-4 text-[10px] text-slate-300">* 트렌드는 분석된 경기 리포트 데이터를 기반으로 자동 계산됩니다.</p>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -804,49 +797,48 @@ export function DashboardPage({
         </div>
 
         {/* 영상 목록 */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
-              <span className="text-sm font-bold text-gray-900">최근 영상</span>
+              <span className="text-sm font-semibold text-slate-800">최근 영상</span>
               {!isLoading && videos.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-bold tabular-nums">{videos.length}</span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-semibold tabular-nums">{videos.length}</span>
               )}
             </div>
           </div>
 
           {isLoading ? (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-slate-100">
               {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="p-6 flex items-center gap-6">
-                  <div className="w-32 h-20 rounded-lg bg-gray-200 animate-pulse shrink-0" />
-                  <div className="flex-1 space-y-2.5">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-48" />
-                    <div className="h-3 bg-gray-100 rounded animate-pulse w-32" />
+                <div key={i} className="px-6 py-4 flex items-center gap-5">
+                  <div className="w-28 rounded-xl bg-slate-100 animate-pulse shrink-0" style={{height:"72px"}} />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 bg-slate-100 rounded-full animate-pulse w-44" />
+                    <div className="h-2.5 bg-slate-100 rounded-full animate-pulse w-28" />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse" />
-                    <div className="h-9 w-24 bg-gray-200 rounded-lg animate-pulse" />
-                    <div className="h-9 w-9 bg-gray-100 rounded-lg animate-pulse" />
+                    <div className="h-8 w-20 bg-slate-100 rounded-xl animate-pulse" />
+                    <div className="h-8 w-20 bg-slate-100 rounded-xl animate-pulse" />
                   </div>
                 </div>
               ))}
             </div>
           ) : videos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-                <Upload className="size-6 text-gray-400" />
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                <Upload className="size-6 text-slate-400" />
               </div>
-              <p className="text-sm font-semibold text-gray-500 mb-1">업로드된 영상이 없습니다</p>
-              <p className="text-xs text-gray-400">첫 번째 경기 영상을 업로드해보세요</p>
+              <p className="text-sm font-semibold text-slate-600 mb-1">업로드된 영상이 없습니다</p>
+              <p className="text-xs text-slate-400">첫 번째 경기 영상을 업로드해보세요</p>
               <button
                 onClick={() => { setShowUploadModal(true); setModalStep("upload"); }}
-                className="mt-5 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
+                className="mt-5 px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
               >
                 영상 업로드
               </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-slate-100">
               {videos.map((video) => (
                 <VideoItem key={video.id} video={video} onViewVideo={onViewVideo} onViewReport={onViewReport} onDelete={handleDelete} />
               ))}

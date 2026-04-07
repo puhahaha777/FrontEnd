@@ -118,26 +118,21 @@ export function OnboardingPage({
           <div className="h-[1px] flex-1 bg-slate-200 ml-4" />
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 relative">
-          <div className="hidden md:block absolute top-[28px] left-[15%] right-[15%] h-[2px] bg-slate-200 border-dashed border-t-2 border-slate-300 z-0" />
-
+        <div className="grid md:grid-cols-3 gap-6">
           {[
-            { icon: Upload, seq: "SEQ.01", tag: "DATA_INPUT", title: "경기 영상 업로드", desc: "스마트폰이나 카메라로 촬영한 배드민턴 경기 영상을 시스템에 바로 업로드합니다." },
-            { icon: Cpu, seq: "SEQ.02", tag: "AI_PROCESSING", title: "엔진 비전 분석", desc: "랠리 트랙 코어 엔진이 선수와 셔틀콕의 움직임을 프레임 단위로 정밀하게 스캔합니다." },
-            { icon: BarChart3, seq: "SEQ.03", tag: "RESULT_OUTPUT", title: "분석 리포트 확인", desc: "자동 생성된 하이라이트 영상과 히트맵, 산점도 등 심층 데이터 리포트를 확인하세요." },
+            { icon: Upload, num: "01", title: "경기 영상 업로드", desc: "스마트폰이나 카메라로 촬영한 배드민턴 경기 영상을 시스템에 바로 업로드합니다." },
+            { icon: Cpu, num: "02", title: "엔진 비전 분석", desc: "랠리 트랙 코어 엔진이 선수와 셔틀콕의 움직임을 프레임 단위로 정밀하게 스캔합니다." },
+            { icon: BarChart3, num: "03", title: "분석 리포트 확인", desc: "자동 생성된 하이라이트 영상과 히트맵, 산점도 등 심층 데이터 리포트를 확인하세요." },
           ].map((step, i) => {
             const Icon = step.icon;
             return (
-              <div key={i} className="relative z-10 flex flex-col items-center text-center group">
-                <div className="w-14 h-14 bg-white border-2 border-slate-200 rounded-lg flex items-center justify-center mb-6 group-hover:border-[#6bba00] group-hover:shadow-[0_0_15px_rgba(140,230,0,0.3)] transition-all relative overflow-hidden">
-                  <Icon className="text-[#1a2b4c] group-hover:scale-110 transition-transform relative z-10" />
-                  <div className="absolute inset-0 bg-[#f2fde0] translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              <div key={i} className="group bg-white border border-slate-100 rounded-2xl p-8 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 flex flex-col items-center text-center">
+                <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-5 group-hover:bg-blue-100 transition-colors">
+                  <Icon className="text-blue-600" size={24} />
                 </div>
-                <div className="bg-[#f2fde0] text-[#6bba00] font-mono text-[10px] font-bold px-2 py-1 border border-[#8ce600]/30 mb-3 tracking-widest">
-                  [{step.seq}] {step.tag}
-                </div>
-                <h3 className="text-lg font-black text-[#1a2b4c] mb-2">{step.title}</h3>
-                <p className="text-slate-500 font-medium text-sm leading-relaxed max-w-[250px]">{step.desc}</p>
+                <div className="text-xs font-bold text-blue-500 tracking-widest mb-2">STEP {step.num}</div>
+                <h3 className="text-base font-bold text-slate-900 mb-2">{step.title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{step.desc}</p>
               </div>
             );
           })}
@@ -198,23 +193,25 @@ export function OnboardingPage({
         </div>
       </section>
 
-      {/* Features Terminal Section */}
+      {/* Features Section */}
       <section id="features" className="py-20 px-6 max-w-[1400px] mx-auto">
-        <div className="border border-slate-200 bg-white shadow-lg p-8 lg:p-12 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#8ce600] to-transparent opacity-80" />
-          <TerminalSquare className="text-slate-300 mb-8 w-12 h-12" />
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-8 lg:p-12">
+          <div className="flex items-center gap-3 mb-8">
+            <TerminalSquare className="text-blue-500 w-5 h-5" />
+            <span className="text-sm font-semibold text-slate-800 uppercase tracking-widest">Core Features</span>
+          </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { id: "SYS.01", title: "자세 및 타구 분석", desc: "프레임 단위로 선수의 관절 위치와 자세를 인식하여 스트로크 종류를 분석." },
-              { id: "SYS.02", title: "하이라이트 생성", desc: "주요 득점/실점 시퀀스 자동 감지 및 타임라인 클립 추출." },
-              { id: "SYS.03", title: "코트 분석", desc: "코트 점유율 히트맵 및 스매시 타격 지점 산점도 매핑." },
-              { id: "SYS.04", title: "AI_코칭", desc: "수집된 빅데이터 기반 약점 분석 및 맞춤형 전술 피드백 생성." },
+              { emoji: "🎯", title: "자세 및 타구 분석", desc: "프레임 단위로 선수의 관절 위치와 자세를 인식하여 스트로크 종류를 분석." },
+              { emoji: "✨", title: "하이라이트 생성", desc: "주요 득점/실점 시퀀스 자동 감지 및 타임라인 클립 추출." },
+              { emoji: "🗺️", title: "코트 분석", desc: "코트 점유율 히트맵 및 스매시 타격 지점 산점도 매핑." },
+              { emoji: "🤖", title: "AI 코칭", desc: "수집된 빅데이터 기반 약점 분석 및 맞춤형 전술 피드백 생성." },
             ].map((feature, i) => (
-              <div key={i} className="group border-l-2 border-slate-100 pl-6 hover:border-[#6bba00] transition-colors">
-                <div className="text-[#6bba00] font-mono text-xs font-bold mb-2">[{feature.id}]</div>
-                <h3 className="text-xl font-black text-[#1a2b4c] mb-3 uppercase tracking-wide">{feature.title}</h3>
-                <p className="text-slate-500 text-sm font-mono leading-relaxed font-medium group-hover:text-slate-700 transition-colors">
+              <div key={i} className="group p-5 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors">
+                <div className="text-2xl mb-3">{feature.emoji}</div>
+                <h3 className="text-sm font-bold text-slate-900 mb-2">{feature.title}</h3>
+                <p className="text-slate-500 text-xs leading-relaxed group-hover:text-slate-600 transition-colors">
                   {feature.desc}
                 </p>
               </div>
