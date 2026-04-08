@@ -78,15 +78,13 @@ interface UploadApiResponse {
 }
 
 /* ─────────────────────────────────────────
-   6점 라벨 정의
+   4점 라벨 정의
 ───────────────────────────────────────── */
 const POINT_GUIDES = [
   { label: "Top Left", shortLabel: "TL", color: "#3B82F6", netPoint: false },
   { label: "Top Right", shortLabel: "TR", color: "#10B981", netPoint: false },
   { label: "Bottom Left", shortLabel: "BL", color: "#F59E0B", netPoint: false },
   { label: "Bottom Right", shortLabel: "BR", color: "#EC4899", netPoint: false },
-  { label: "Net Left Post", shortLabel: "NL", color: "#8B5CF6", netPoint: true },
-  { label: "Net Right Post", shortLabel: "NR", color: "#EF4444", netPoint: true },
 ];
 
 /* 모달 단계 */
@@ -569,14 +567,7 @@ export function DashboardPage({
       ctx.setLineDash([]);
     }
 
-    if (points.length >= 6) {
-      ctx.beginPath();
-      ctx.moveTo(points[4].x * scaleX, points[4].y * scaleY);
-      ctx.lineTo(points[5].x * scaleX, points[5].y * scaleY);
-      ctx.strokeStyle = "rgba(239,68,68,0.95)";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
+
 
     points.forEach((pt, i) => {
       const g = POINT_GUIDES[i];
@@ -609,8 +600,8 @@ export function DashboardPage({
   }, [points, modalStep, drawOverlay]);
 
   useEffect(() => {
-    if (modalStep !== "corners" || points.length !== 6) {
-      if (points.length < 6) setThumbnailBlob(null);
+    if (modalStep !== "corners" || points.length !== 4) {
+      if (points.length < 4) setThumbnailBlob(null);
       return;
     }
 
@@ -644,7 +635,7 @@ export function DashboardPage({
   }, [points, modalStep, capturedDataUrl]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (points.length >= 6) return;
+    if (points.length >= 4) return;
 
     const canvas = overlayCanvasRef.current;
     const img = cornerImgRef.current;
@@ -723,7 +714,7 @@ export function DashboardPage({
   };
 
   const handleSubmit = async () => {
-    if (points.length < 6 || !uploadFile) return;
+    if (points.length < 4 || !uploadFile) return;
 
     if (!thumbnailBlob) {
       alert("썸네일 생성이 아직 완료되지 않았습니다. 잠시 후 다시 시도해주세요.");
@@ -835,7 +826,7 @@ export function DashboardPage({
     setTipIndex((p) => (p === BADMINTON_TIPS.length - 1 ? 0 : p + 1));
 
   const currentTip = BADMINTON_TIPS[tipIndex];
-  const currentGuide = points.length < 6 ? POINT_GUIDES[points.length] : null;
+  const currentGuide = points.length < 4 ? POINT_GUIDES[points.length] : null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -1349,7 +1340,7 @@ export function DashboardPage({
                     <StepIndicator step="corners" />
                     <h2 className="text-base font-bold text-gray-900">좌표 지정</h2>
                     <p className="text-xs text-gray-400">
-                      코트 4점과 네트 2점을 순서대로 클릭하세요
+                      코트 4개 코너를 순서대로 클릭하세요
                     </p>
                   </div>
                 </div>
@@ -1378,14 +1369,14 @@ export function DashboardPage({
                       />
                       <span>{currentGuide.label}을(를) 클릭하세요</span>
                       <span className="ml-auto text-xs opacity-60 font-normal">
-                        {points.length} / 6
+                        {points.length} / 4
                       </span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
                       <CheckCircle2 className="size-4 flex-shrink-0" />
                       <span className="text-sm font-medium">
-                        6개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.
+                        4개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.
                       </span>
                     </div>
                   )}
@@ -1409,13 +1400,13 @@ export function DashboardPage({
                     <canvas
                       ref={overlayCanvasRef}
                       className={`absolute inset-0 w-full h-full ${
-                        points.length < 6 ? "cursor-crosshair" : "cursor-default"
+                        points.length < 4 ? "cursor-crosshair" : "cursor-default"
                       }`}
                       onClick={handleCanvasClick}
                     />
 
                     <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full backdrop-blur-sm font-mono">
-                      {points.length} / 6
+                      {points.length} / 4
                     </div>
                   </div>
                 </div>
@@ -1447,7 +1438,7 @@ export function DashboardPage({
 
                   <button
                     onClick={handleSubmit}
-                    disabled={points.length < 6 || isSubmitting}
+                    disabled={points.length < 4 || isSubmitting}
                     className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-semibold"
                   >
                     {isSubmitting ? "업로드 중..." : "분석 시작"}
