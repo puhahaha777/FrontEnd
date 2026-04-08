@@ -567,14 +567,7 @@ export function DashboardPage({
       ctx.setLineDash([]);
     }
 
-    if (points.length >= 4) {
-      ctx.beginPath();
-      ctx.moveTo(points[4].x * scaleX, points[4].y * scaleY);
-      ctx.lineTo(points[5].x * scaleX, points[5].y * scaleY);
-      ctx.strokeStyle = "rgba(239,68,68,0.95)";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    }
+
 
     points.forEach((pt, i) => {
       const g = POINT_GUIDES[i];
