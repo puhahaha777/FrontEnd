@@ -33,7 +33,8 @@ export function VideoItem({ video, onViewVideo, onViewReport, onDelete }: VideoI
           : "bg-slate-100"}`}
         style={{ height: "72px", minWidth: "112px" }}
       >
-        {video.thumbnail && isReady ? (
+
+        {video.thumbnail ? (
           <img
             src={video.thumbnail}
             alt={video.name}

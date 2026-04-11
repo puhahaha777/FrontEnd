@@ -34,7 +34,7 @@ import ReactMarkdown from "react-markdown";
 
 import { Header, type Page } from "./Header";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { mockReport } from "../types/reportMock";
+import { fetchReport } from "../api/reportpageApi";
 import type {
   ReportResponse,
   PlayerKey,
@@ -629,7 +629,7 @@ export function AnalysisReportPage({
       try {
         setLoading(true);
         setErrorMsg(null);
-        const res = mockReport;
+        const res = await fetchReport(videoId);
         if (!alive) return;
         setReport(res);
       } catch (e: any) {
