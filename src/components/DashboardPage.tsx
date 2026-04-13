@@ -33,9 +33,6 @@ import {
 import { VideoItem } from "../components/VideoItem";
 import { Footer } from "./ui/footer";
 
-/* ─────────────────────────────────────────
-   타입
-───────────────────────────────────────── */
 interface UserInfo {
   nickname?: string;
   email?: string;
@@ -49,6 +46,7 @@ interface VideoRecord {
   duration: string;
   score?: string;
   thumbnail?: string;
+  serverThumbnail?: string;
   status?: "uploading" | "processing" | "completed" | "error";
 }
 
@@ -74,12 +72,10 @@ interface UploadApiResponse {
     title?: string;
     uploadDate?: string;
     status?: string;
+    thumbnailUrl?: string;
   };
 }
 
-/* ─────────────────────────────────────────
-   4점 라벨 정의
-───────────────────────────────────────── */
 const POINT_GUIDES = [
   { label: "Top Left", shortLabel: "TL", color: "#3B82F6", netPoint: false },
   { label: "Top Right", shortLabel: "TR", color: "#10B981", netPoint: false },
@@ -87,12 +83,38 @@ const POINT_GUIDES = [
   { label: "Bottom Right", shortLabel: "BR", color: "#EC4899", netPoint: false },
 ];
 
-/* 모달 단계 */
 type ModalStep = "upload" | "frame" | "corners";
 
-/* ─────────────────────────────────────────
-   스파크라인
-───────────────────────────────────────── */
+const LOCAL_THUMBNAIL_PREFIX = "rallytrack-thumbnail-";
+
+function getLocalThumbnailKey(videoId: string) {
+  return `${LOCAL_THUMBNAIL_PREFIX}${videoId}`;
+}
+
+function saveLocalThumbnail(videoId: string, dataUrl: string) {
+  try {
+    localStorage.setItem(getLocalThumbnailKey(videoId), dataUrl);
+  } catch (error) {
+    console.warn("로컬 썸네일 저장 실패:", error);
+  }
+}
+
+function loadLocalThumbnail(videoId: string): string | null {
+  try {
+    return localStorage.getItem(getLocalThumbnailKey(videoId));
+  } catch {
+    return null;
+  }
+}
+
+function removeLocalThumbnail(videoId: string) {
+  try {
+    localStorage.removeItem(getLocalThumbnailKey(videoId));
+  } catch {
+    // ignore
+  }
+}
+
 function TrendSparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -129,9 +151,6 @@ function TrendSparkline({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-/* ─────────────────────────────────────────
-   상수 데이터
-───────────────────────────────────────── */
 const BADMINTON_TIPS = [
   {
     icon: "🏸",
@@ -181,9 +200,6 @@ const MOCK_ACTIVITY = [
   { day: "일", usageCount: 6, uploadCount: 1 },
 ];
 
-/* ─────────────────────────────────────────
-   유틸
-───────────────────────────────────────── */
 function toDateString(value?: string) {
   if (!value) return new Date().toISOString().split("T")[0];
   const d = new Date(value);
@@ -191,15 +207,6 @@ function toDateString(value?: string) {
   return d.toISOString().split("T")[0];
 }
 
-/**
- * 백엔드 VideoService가 기대하는 courtCorners 구조:
- * {
- *   topLeft: { x, y },
- *   topRight: { x, y },
- *   bottomLeft: { x, y },
- *   bottomRight: { x, y }
- * }
- */
 function buildCourtCornersPayload(points: Point[]) {
   return JSON.stringify({
     topLeft: {
@@ -221,9 +228,6 @@ function buildCourtCornersPayload(points: Point[]) {
   });
 }
 
-/* ─────────────────────────────────────────
-   활동 차트 카드
-───────────────────────────────────────── */
 function ActivityChartCard() {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
@@ -329,9 +333,6 @@ function ActivityChartCard() {
   );
 }
 
-/* ─────────────────────────────────────────
-   스텝 인디케이터
-───────────────────────────────────────── */
 function StepIndicator({ step }: { step: ModalStep }) {
   const steps: { key: ModalStep; label: string }[] = [
     { key: "upload", label: "영상 선택" },
@@ -385,9 +386,6 @@ function StepIndicator({ step }: { step: ModalStep }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════
-   메인 컴포넌트
-═══════════════════════════════════════════════════════ */
 export function DashboardPage({
   onLogout,
   onViewVideo,
@@ -426,27 +424,68 @@ export function DashboardPage({
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const videoUrlRef = useRef<string | null>(null);
 
+  const tryPromoteServerThumbnail = useCallback(
+    (videoId: string, serverThumbnail?: string) => {
+      if (!serverThumbnail) return;
+
+      const img = new Image();
+
+      img.onload = () => {
+        setVideos((prev) =>
+          prev.map((video) =>
+            video.id === videoId
+              ? {
+                  ...video,
+                  serverThumbnail,
+                }
+              : video,
+          ),
+        );
+      };
+
+      img.onerror = () => {
+        console.warn("서버 썸네일 아직 사용 불가:", { videoId, serverThumbnail });
+      };
+
+      img.src = serverThumbnail;
+    },
+    [],
+  );
+
   const fetchData = useCallback(async () => {
     try {
       const json = await fetchDashboard();
       setStats(json.data.dashboardSummary);
-      setVideos(
-        json.data.recentVideos.map((v) => ({
-          id: String(v.videoId),
+
+      const incomingVideos: VideoRecord[] = json.data.recentVideos.map((v) => {
+        const id = String(v.videoId);
+        const localThumb = loadLocalThumbnail(id);
+
+        return {
+          id,
           name: v.title,
           date: v.date,
           duration: v.playTime || "00:00",
           score: v.matchScore,
-          thumbnail: v.thumbnailUrl,
+          thumbnail: localThumb ?? v.thumbnailUrl,
+          serverThumbnail: v.thumbnailUrl,
           status: v.playTime === "분석 중" ? "processing" : "completed",
-        })),
-      );
+        };
+      });
+
+      setVideos(incomingVideos);
+
+      incomingVideos.forEach((video) => {
+        if (video.serverThumbnail) {
+          tryPromoteServerThumbnail(video.id, video.serverThumbnail);
+        }
+      });
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [tryPromoteServerThumbnail]);
 
   useEffect(() => {
     fetchData();
@@ -473,6 +512,8 @@ export function DashboardPage({
   }, [hasProcessingVideo, fetchData]);
 
   const handleDelete = async (id: string) => {
+    removeLocalThumbnail(id);
+
     if (id.startsWith("temp-")) {
       setVideos((p) => p.filter((v) => v.id !== id));
       return;
@@ -482,6 +523,7 @@ export function DashboardPage({
       try {
         await deleteVideo(id);
         setVideos((p) => p.filter((v) => v.id !== id));
+
         if (stats) {
           setStats({
             ...stats,
@@ -566,8 +608,6 @@ export function DashboardPage({
       ctx.fill();
       ctx.setLineDash([]);
     }
-
-
 
     points.forEach((pt, i) => {
       const g = POINT_GUIDES[i];
@@ -716,7 +756,7 @@ export function DashboardPage({
   const handleSubmit = async () => {
     if (points.length < 4 || !uploadFile) return;
 
-    if (!thumbnailBlob) {
+    if (!thumbnailBlob || !capturedDataUrl) {
       alert("썸네일 생성이 아직 완료되지 않았습니다. 잠시 후 다시 시도해주세요.");
       return;
     }
@@ -728,9 +768,9 @@ export function DashboardPage({
     const currentVideoName = videoName || uploadFile.name;
     const currentPoints = [...points];
     const currentThumbnailBlob = thumbnailBlob;
+    const currentThumbnailDataUrl = capturedDataUrl;
 
     const tempId = `temp-${Date.now()}`;
-    const objectThumbUrl = URL.createObjectURL(currentThumbnailBlob);
 
     const tempVideo: VideoRecord = {
       id: tempId,
@@ -738,7 +778,8 @@ export function DashboardPage({
       date: new Date().toISOString().split("T")[0],
       duration: "업로드 중...",
       status: "uploading",
-      thumbnail: objectThumbUrl,
+      thumbnail: currentThumbnailDataUrl,
+      serverThumbnail: undefined,
     };
 
     setVideos((prev) => [tempVideo, ...prev]);
@@ -775,6 +816,11 @@ export function DashboardPage({
         throw new Error("업로드 응답에 videoId가 없습니다.");
       }
 
+      const newThumbnailUrl =
+        uploaded?.thumbnailUrl || `/api/v1/videos/${newVideoId}/thumbnail`;
+
+      saveLocalThumbnail(newVideoId, currentThumbnailDataUrl);
+
       setVideos((prev) =>
         prev.map((v) =>
           v.id === tempId
@@ -785,10 +831,14 @@ export function DashboardPage({
                 date: uploadDate,
                 duration: "분석 중",
                 status: "processing",
+                thumbnail: currentThumbnailDataUrl,
+                serverThumbnail: newThumbnailUrl,
               }
             : v,
         ),
       );
+
+      tryPromoteServerThumbnail(newVideoId, newThumbnailUrl);
 
       setStats((prev) =>
         prev ? { ...prev, totalVideos: prev.totalVideos + 1 } : prev,
@@ -816,7 +866,6 @@ export function DashboardPage({
       );
     } finally {
       setIsSubmitting(false);
-      URL.revokeObjectURL(objectThumbUrl);
     }
   };
 
@@ -1153,6 +1202,7 @@ export function DashboardPage({
                   <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
                     영상 파일
                   </label>
+
                   <div
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -1160,68 +1210,58 @@ export function DashboardPage({
                     }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
-                    className={`rounded-xl border-2 border-dashed transition-all ${
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
                       isDragging
-                        ? "border-blue-400 bg-blue-50"
-                        : "border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/50"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 bg-gray-50"
                     }`}
                   >
-                    <label
-                      htmlFor="video-upload"
-                      className="flex flex-col items-center justify-center w-full p-8 cursor-pointer"
-                    >
+                    <Upload className="size-8 text-gray-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-gray-600 mb-1">
+                      드래그 앤 드롭 또는 클릭하여 업로드
+                    </p>
+                    <p className="text-xs text-gray-400 mb-4">
+                      MP4, MOV 등 영상 파일
+                    </p>
+
+                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 cursor-pointer transition-colors">
+                      <Plus className="size-4" />
+                      파일 선택
                       <input
                         type="file"
                         accept="video/*"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleFileSelect(f);
-                        }}
                         className="hidden"
-                        id="video-upload"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileSelect(file);
+                        }}
                       />
-                      <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center mb-3">
-                        <Plus className="size-5 text-gray-400" />
-                      </div>
-                      <p className="text-sm font-semibold text-gray-500">
-                        클릭하여 파일 선택
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">또는 드래그 앤 드롭</p>
-                      <p className="text-xs text-gray-300 mt-1">
-                        MP4, MOV, AVI, MKV, WEBM
-                      </p>
                     </label>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  취소
-                </button>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  >
+                    취소
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {modalStep === "frame" && (
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
-              <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setModalStep("upload")}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 mt-1"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </button>
-                  <div>
-                    <StepIndicator step="frame" />
-                    <h2 className="text-base font-bold text-gray-900">프레임 선택</h2>
-                    <p className="text-xs text-gray-400">
-                      코트 라인이 선명하게 보이는 프레임을 선택하세요
-                    </p>
-                  </div>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                <div>
+                  <StepIndicator step="frame" />
+                  <h2 className="text-base font-bold text-gray-900 mt-1">프레임 선택</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    코트가 가장 잘 보이는 프레임을 선택하세요
+                  </p>
                 </div>
                 <button
                   onClick={closeModal}
@@ -1231,118 +1271,74 @@ export function DashboardPage({
                 </button>
               </div>
 
-              <div className="overflow-y-auto flex-1">
+              <div className="p-6">
                 <video
                   ref={videoRef}
                   src={videoUrlRef.current ?? undefined}
                   className="hidden"
-                  preload="auto"
-                  crossOrigin="anonymous"
+                  controls={false}
                 />
                 <canvas ref={frameCanvasRef} className="hidden" />
 
-                <div className="px-6 pt-4">
-                  <div
-                    className="relative rounded-xl overflow-hidden bg-black"
-                    style={{ aspectRatio: "16/9" }}
-                  >
-                    {capturedDataUrl ? (
-                      <img
-                        src={capturedDataUrl}
-                        alt="선택된 프레임"
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
-                        프레임을 불러오는 중...
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="px-6 pt-4 pb-2">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setFrameIndex((f) => Math.max(0, f - 1))}
-                      disabled={frameIndex <= 0}
-                      className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-
-                    <div className="flex-1">
-                      <input
-                        type="range"
-                        min={0}
-                        max={Math.max(0, totalFrames - 1)}
-                        value={frameIndex}
-                        onChange={(e) => setFrameIndex(Number(e.target.value))}
-                        className="w-full accent-blue-600"
-                      />
-                      <div className="flex justify-between text-xs text-gray-400 mt-1 font-mono">
-                        <span>프레임 {frameIndex}</span>
-                        <span>
-                          {Math.floor(frameIndex / fps / 60)}:
-                          {String(Math.floor((frameIndex / fps) % 60)).padStart(2, "0")}
-                          {" / "}
-                          {totalFrames > 0
-                            ? `${Math.floor(totalFrames / fps / 60)}:${String(
-                                Math.floor((totalFrames / fps) % 60),
-                              ).padStart(2, "0")}`
-                            : "0:00"}
-                        </span>
-                      </div>
+                <div className="rounded-2xl overflow-hidden border border-gray-200 bg-black mb-5">
+                  {capturedDataUrl ? (
+                    <img
+                      src={capturedDataUrl}
+                      alt="선택 프레임"
+                      className="w-full max-h-[70vh] object-contain mx-auto"
+                    />
+                  ) : (
+                    <div className="h-[480px] flex items-center justify-center text-white/70">
+                      프레임 불러오는 중...
                     </div>
+                  )}
+                </div>
 
-                    <button
-                      onClick={() =>
-                        setFrameIndex((f) =>
-                          Math.min(Math.max(0, totalFrames - 1), f + 1),
-                        )
-                      }
-                      disabled={frameIndex >= Math.max(0, totalFrames - 1)}
-                      className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                    >
-                      <ChevronRight className="size-4" />
-                    </button>
+                <div className="mb-4">
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(totalFrames - 1, 0)}
+                    value={frameIndex}
+                    onChange={(e) => setFrameIndex(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                    <span>프레임: {frameIndex}</span>
+                    <span>총 프레임: {totalFrames}</span>
                   </div>
                 </div>
-              </div>
 
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-                <button
-                  onClick={closeModal}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleConfirmFrame}
-                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-semibold"
-                >
-                  이 프레임 사용
-                </button>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setModalStep("upload")}
+                    className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  >
+                    이전
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmFrame}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700"
+                  >
+                    이 프레임으로 선택
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {modalStep === "corners" && (
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[92vh] overflow-hidden">
-              <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setModalStep("frame")}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 mt-1"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </button>
-                  <div>
-                    <StepIndicator step="corners" />
-                    <h2 className="text-base font-bold text-gray-900">좌표 지정</h2>
-                    <p className="text-xs text-gray-400">
-                      코트 4개 코너를 순서대로 클릭하세요
-                    </p>
-                  </div>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                <div>
+                  <StepIndicator step="corners" />
+                  <h2 className="text-base font-bold text-gray-900 mt-1">코트 좌표 지정</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    코트 네 꼭짓점을 순서대로 클릭하세요
+                  </p>
                 </div>
                 <button
                   onClick={closeModal}
@@ -1352,96 +1348,102 @@ export function DashboardPage({
                 </button>
               </div>
 
-              <div className="overflow-y-auto flex-1">
-                <div className="px-6 pt-4">
-                  {currentGuide ? (
-                    <div
-                      className="flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium"
-                      style={{
-                        borderColor: `${currentGuide.color}55`,
-                        backgroundColor: `${currentGuide.color}11`,
-                        color: currentGuide.color,
-                      }}
+              <div className="p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">
+                      현재 선택:{" "}
+                      <span style={{ color: currentGuide?.color }}>
+                        {currentGuide?.label ?? "완료"}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      순서: Top Left → Top Right → Bottom Left → Bottom Right
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPoints([])}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
                     >
-                      <span
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: currentGuide.color }}
-                      />
-                      <span>{currentGuide.label}을(를) 클릭하세요</span>
-                      <span className="ml-auto text-xs opacity-60 font-normal">
-                        {points.length} / 4
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700">
-                      <CheckCircle2 className="size-4 flex-shrink-0" />
-                      <span className="text-sm font-medium">
-                        4개 점 수집 완료! 아래 분석 시작 버튼을 눌러주세요.
-                      </span>
-                    </div>
-                  )}
+                      <RotateCcw className="size-4" />
+                      초기화
+                    </button>
+                  </div>
                 </div>
 
-                <div className="px-6 py-4">
-                  <div
-                    className="relative rounded-xl overflow-hidden bg-black"
-                    style={{ aspectRatio: "16/9" }}
-                  >
-                    {capturedDataUrl && (
+                <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-black mb-5">
+                  {capturedDataUrl ? (
+                    <>
                       <img
                         ref={cornerImgRef}
                         src={capturedDataUrl}
-                        alt="캘리브레이션 프레임"
-                        className="w-full h-full object-contain block"
-                        onLoad={() => drawOverlay()}
+                        alt="코트 좌표 지정"
+                        className="w-full max-h-[70vh] object-contain mx-auto block"
+                        onLoad={drawOverlay}
                       />
-                    )}
-
-                    <canvas
-                      ref={overlayCanvasRef}
-                      className={`absolute inset-0 w-full h-full ${
-                        points.length < 4 ? "cursor-crosshair" : "cursor-default"
-                      }`}
-                      onClick={handleCanvasClick}
-                    />
-
-                    <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full backdrop-blur-sm font-mono">
-                      {points.length} / 4
+                      <canvas
+                        ref={overlayCanvasRef}
+                        className="absolute inset-0 w-full h-full cursor-crosshair"
+                        onClick={handleCanvasClick}
+                      />
+                    </>
+                  ) : (
+                    <div className="h-[480px] flex items-center justify-center text-white/70">
+                      이미지 불러오는 중...
                     </div>
-                  </div>
+                  )}
                 </div>
-              </div>
 
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-                <button
-                  onClick={() => {
-                    setPoints([]);
-                    setThumbnailBlob(null);
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <RotateCcw className="size-4" />
-                  좌표 초기화
-                </button>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  {POINT_GUIDES.map((guide, i) => {
+                    const selected = points[i];
+                    return (
+                      <div
+                        key={guide.label}
+                        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className="inline-block w-3 h-3 rounded-full"
+                            style={{ backgroundColor: guide.color }}
+                          />
+                          <p className="text-sm font-semibold text-gray-700">
+                            {guide.label}
+                          </p>
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          {selected
+                            ? `(${selected.x}, ${selected.y})`
+                            : "아직 선택 안 됨"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                <div className="flex items-center gap-2">
-                  {submitResult === "error" && (
-                    <span className="text-xs text-red-500 font-medium">
-                      업로드에 실패했습니다.
-                    </span>
-                  )}
-                  {submitResult === "success" && (
-                    <span className="text-xs text-green-600 font-medium">
-                      업로드가 시작되었습니다.
-                    </span>
-                  )}
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setModalStep("frame")}
+                    className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  >
+                    이전
+                  </button>
 
                   <button
+                    type="button"
                     onClick={handleSubmit}
                     disabled={points.length < 4 || isSubmitting}
-                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-semibold"
+                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold ${
+                      points.length < 4 || isSubmitting
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
                   >
-                    {isSubmitting ? "업로드 중..." : "분석 시작"}
+                    {isSubmitting ? "업로드 중..." : "업로드 시작"}
                   </button>
                 </div>
               </div>
