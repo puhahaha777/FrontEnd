@@ -79,8 +79,10 @@ interface UploadApiResponse {
 const POINT_GUIDES = [
   { label: "Top Left", shortLabel: "TL", color: "#3B82F6", netPoint: false },
   { label: "Top Right", shortLabel: "TR", color: "#10B981", netPoint: false },
-  { label: "Bottom Left", shortLabel: "BL", color: "#F59E0B", netPoint: false },
   { label: "Bottom Right", shortLabel: "BR", color: "#EC4899", netPoint: false },
+  { label: "Bottom Left", shortLabel: "BL", color: "#F59E0B", netPoint: false },
+  { label: "Net Left", shortLabel: "NL", color: "#8B5CF6", netPoint: true },
+  { label: "Net Right", shortLabel: "NR", color: "#06B6D4", netPoint: true },
 ];
 
 type ModalStep = "upload" | "frame" | "corners";
@@ -217,13 +219,21 @@ function buildCourtCornersPayload(points: Point[]) {
       x: points[1].x,
       y: points[1].y,
     },
-    bottomLeft: {
+    bottomRight: {
       x: points[2].x,
       y: points[2].y,
     },
-    bottomRight: {
+    bottomLeft: {
       x: points[3].x,
       y: points[3].y,
+    },
+    netLeft: {
+      x: points[4].x,
+      y: points[4].y,
+    },
+    netRight: {
+      x: points[5].x,
+      y: points[5].y,
     },
   });
 }
@@ -593,19 +603,33 @@ export function DashboardPage({
     const scaleX = canvas.width / (videoSize.w || img.naturalWidth || canvas.width);
     const scaleY = canvas.height / (videoSize.h || img.naturalHeight || canvas.height);
 
+    // 코트 라인 (4개 포인트가 찍혔을 때)
     if (points.length >= 4) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY); // TL
+  ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY); // TR
+  ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY); // BR
+  ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY); // BL
+  ctx.closePath();
+
+  ctx.strokeStyle = "rgba(59,130,246,0.9)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 3]);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(59,130,246,0.07)";
+  ctx.fill();
+  ctx.setLineDash([]);
+}
+
+    // 네트 라인 (6개 포인트가 모두 찍혔을 때)
+    if (points.length === 6) {
       ctx.beginPath();
-      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
-      ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
-      ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY);
-      ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY);
-      ctx.closePath();
-      ctx.strokeStyle = "rgba(59,130,246,0.9)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 3]);
+      ctx.moveTo(points[4].x * scaleX, points[4].y * scaleY);
+      ctx.lineTo(points[5].x * scaleX, points[5].y * scaleY);
+      ctx.strokeStyle = "rgba(139,92,246,0.9)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 4]);
       ctx.stroke();
-      ctx.fillStyle = "rgba(59,130,246,0.07)";
-      ctx.fill();
       ctx.setLineDash([]);
     }
 
@@ -640,8 +664,8 @@ export function DashboardPage({
   }, [points, modalStep, drawOverlay]);
 
   useEffect(() => {
-    if (modalStep !== "corners" || points.length !== 4) {
-      if (points.length < 4) setThumbnailBlob(null);
+    if (modalStep !== "corners" || points.length !== 6) {
+      if (points.length < 6) setThumbnailBlob(null);
       return;
     }
 
@@ -675,7 +699,7 @@ export function DashboardPage({
   }, [points, modalStep, capturedDataUrl]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (points.length >= 4) return;
+    if (points.length >= 6) return;
 
     const canvas = overlayCanvasRef.current;
     const img = cornerImgRef.current;
@@ -754,7 +778,7 @@ export function DashboardPage({
   };
 
   const handleSubmit = async () => {
-    if (points.length < 4 || !uploadFile) return;
+    if (points.length < 6 || !uploadFile) return;
 
     if (!thumbnailBlob || !capturedDataUrl) {
       alert("썸네일 생성이 아직 완료되지 않았습니다. 잠시 후 다시 시도해주세요.");
@@ -875,7 +899,7 @@ export function DashboardPage({
     setTipIndex((p) => (p === BADMINTON_TIPS.length - 1 ? 0 : p + 1));
 
   const currentTip = BADMINTON_TIPS[tipIndex];
-  const currentGuide = points.length < 4 ? POINT_GUIDES[points.length] : null;
+  const currentGuide = points.length < 6 ? POINT_GUIDES[points.length] : null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -1337,7 +1361,7 @@ export function DashboardPage({
                   <StepIndicator step="corners" />
                   <h2 className="text-base font-bold text-gray-900 mt-1">코트 좌표 지정</h2>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    코트 네 꼭짓점을 순서대로 클릭하세요
+                    코트 네 꼭짓점과 네트 양 끝을 순서대로 클릭하세요
                   </p>
                 </div>
                 <button
@@ -1358,7 +1382,7 @@ export function DashboardPage({
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      순서: Top Left → Top Right → Bottom Left → Bottom Right
+                      순서: TL → TR → BR → BL → NL → NR
                     </p>
                   </div>
 
@@ -1397,7 +1421,7 @@ export function DashboardPage({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                   {POINT_GUIDES.map((guide, i) => {
                     const selected = points[i];
                     return (
@@ -1436,9 +1460,9 @@ export function DashboardPage({
                   <button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={points.length < 4 || isSubmitting}
+                    disabled={points.length < 6 || isSubmitting}
                     className={`px-5 py-2.5 rounded-xl text-sm font-semibold ${
-                      points.length < 4 || isSubmitting
+                      points.length < 6 || isSubmitting
                         ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                         : "bg-blue-600 text-white hover:bg-blue-700"
                     }`}

@@ -196,54 +196,59 @@ export function VideoItem({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => isReady && onViewVideo(video.id)}
-          disabled={!isReady}
-          title="영상 보기"
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-            isReady
-              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-200"
-              : "bg-slate-100 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          <Play className="size-3.5" />
-          영상 보기
-        </button>
+      {/* 버튼과 상태 표시등을 절대 위치로 배치하여 레이아웃 시프트 방지 */}
+      <div className="relative shrink-0" style={{ width: "280px", height: "36px" }}>
+        {/* 상태 표시등 - hover 시 숨김 */}
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 transition-opacity duration-200 group-hover:opacity-0 group-hover:pointer-events-none">
+          {isReady ? (
+            <div className="w-2 h-2 rounded-full bg-emerald-400" title="분석 완료" />
+          ) : isProcessing ? (
+            <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" title="분석 중" />
+          ) : isUploading ? (
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" title="업로드 중" />
+          ) : isError ? (
+            <div className="w-2 h-2 rounded-full bg-red-400" title="오류" />
+          ) : null}
+        </div>
 
-        <button
-          onClick={() => isReady && onViewReport(video.id)}
-          disabled={!isReady}
-          title="분석 보기"
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-            isReady
-              ? "bg-violet-600 text-white hover:bg-violet-700 shadow-sm shadow-violet-200"
-              : "bg-slate-100 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          <FileText className="size-3.5" />
-          분석 보기
-        </button>
+        {/* 버튼들 - hover 시 표시 */}
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={() => isReady && onViewVideo(video.id)}
+            disabled={!isReady}
+            title="영상 보기"
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+              isReady
+                ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-200"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+            }`}
+          >
+            <Play className="size-3.5" />
+            영상 보기
+          </button>
 
-        <button
-          onClick={() => onDelete(video.id)}
-          title="삭제"
-          className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-        >
-          <Trash2 className="size-4" />
-        </button>
-      </div>
+          <button
+            onClick={() => isReady && onViewReport(video.id)}
+            disabled={!isReady}
+            title="분석 보기"
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+              isReady
+                ? "bg-violet-600 text-white hover:bg-violet-700 shadow-sm shadow-violet-200"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+            }`}
+          >
+            <FileText className="size-3.5" />
+            분석 보기
+          </button>
 
-      <div className="flex items-center gap-2 shrink-0 group-hover:hidden">
-        {isReady ? (
-          <div className="w-2 h-2 rounded-full bg-emerald-400" title="분석 완료" />
-        ) : isProcessing ? (
-          <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" title="분석 중" />
-        ) : isUploading ? (
-          <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" title="업로드 중" />
-        ) : isError ? (
-          <div className="w-2 h-2 rounded-full bg-red-400" title="오류" />
-        ) : null}
+          <button
+            onClick={() => onDelete(video.id)}
+            title="삭제"
+            className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
