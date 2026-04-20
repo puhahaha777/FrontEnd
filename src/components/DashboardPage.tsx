@@ -434,6 +434,7 @@ export function DashboardPage({
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const videoUrlRef = useRef<string | null>(null);
 
+  // ✅ 수정: thumbnail 필드도 함께 업데이트하여 화면에 표시되도록 변경
   const tryPromoteServerThumbnail = useCallback(
     (videoId: string, serverThumbnail?: string) => {
       if (!serverThumbnail) return;
@@ -446,6 +447,7 @@ export function DashboardPage({
             video.id === videoId
               ? {
                   ...video,
+                  thumbnail: serverThumbnail,      // ✅ 실제 표시되는 필드 업데이트
                   serverThumbnail,
                 }
               : video,
@@ -605,21 +607,21 @@ export function DashboardPage({
 
     // 코트 라인 (4개 포인트가 찍혔을 때)
     if (points.length >= 4) {
-  ctx.beginPath();
-  ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY); // TL
-  ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY); // TR
-  ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY); // BR
-  ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY); // BL
-  ctx.closePath();
+      ctx.beginPath();
+      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY); // TL
+      ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY); // TR
+      ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY); // BR
+      ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY); // BL
+      ctx.closePath();
 
-  ctx.strokeStyle = "rgba(59,130,246,0.9)";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 3]);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(59,130,246,0.07)";
-  ctx.fill();
-  ctx.setLineDash([]);
-}
+      ctx.strokeStyle = "rgba(59,130,246,0.9)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(59,130,246,0.07)";
+      ctx.fill();
+      ctx.setLineDash([]);
+    }
 
     // 네트 라인 (6개 포인트가 모두 찍혔을 때)
     if (points.length === 6) {
