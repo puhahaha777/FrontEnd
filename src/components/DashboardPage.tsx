@@ -5,25 +5,13 @@ import {
   X,
   Film,
   Clock,
-  TrendingUp,
   ChevronRight,
   ChevronLeft,
   Lightbulb,
-  Activity,
   RotateCcw,
   CheckCircle2,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  Bar,
-  Line,
-} from "recharts";
+
 import { Header, type Page } from "./Header";
 import {
   fetchDashboard,
@@ -117,42 +105,6 @@ function removeLocalThumbnail(videoId: string) {
   }
 }
 
-function TrendSparkline({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const w = 120;
-  const h = 36;
-
-  const pts = data
-    .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = h - ((v - min) / range) * (h - 6) - 3;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg width={w} height={h} className="overflow-visible">
-      <polyline
-        points={pts}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        opacity="0.8"
-      />
-      {(() => {
-        const last = data[data.length - 1];
-        const x = w;
-        const y = h - ((last - min) / range) * (h - 6) - 3;
-        return <circle cx={x} cy={y} r="3" fill={color} />;
-      })()}
-    </svg>
-  );
-}
-
 const BADMINTON_TIPS = [
   {
     icon: "🏸",
@@ -184,22 +136,6 @@ const BADMINTON_TIPS = [
     title: "호흡 관리",
     desc: "스트로크 직전 짧게 내쉬는 호흡이 근육 긴장을 줄이고 정확도를 높입니다.",
   },
-];
-
-const MOCK_TREND = {
-  smash: [62, 68, 65, 72, 70, 75, 75],
-  defense: [70, 72, 75, 73, 78, 80, 88],
-  accuracy: [60, 65, 63, 70, 75, 78, 80],
-};
-
-const MOCK_ACTIVITY = [
-  { day: "월", usageCount: 5, uploadCount: 1 },
-  { day: "화", usageCount: 8, uploadCount: 2 },
-  { day: "수", usageCount: 4, uploadCount: 0 },
-  { day: "목", usageCount: 10, uploadCount: 3 },
-  { day: "금", usageCount: 7, uploadCount: 1 },
-  { day: "토", usageCount: 12, uploadCount: 4 },
-  { day: "일", usageCount: 6, uploadCount: 1 },
 ];
 
 function toDateString(value?: string) {
@@ -236,111 +172,6 @@ function buildCourtCornersPayload(points: Point[]) {
       y: points[5].y,
     },
   });
-}
-
-function ActivityChartCard() {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
-      <div className="flex items-center gap-2 mb-2">
-        <Activity className="size-4 text-blue-500" />
-        <h2 className="text-sm font-semibold text-slate-800">활동 통계</h2>
-        <span className="ml-auto text-[10px] text-gray-400 font-mono">
-          최근 7일 · 사용/업로드 추이
-        </span>
-      </div>
-      <p className="text-xs text-gray-400 mb-5">
-        사이트 사용 횟수와 업로드된 영상 수를 한 번에 확인할 수 있습니다.
-      </p>
-
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={MOCK_ACTIVITY}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-          >
-            <CartesianGrid stroke="#f1f5f9" vertical={false} />
-            <XAxis
-              dataKey="day"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 12, fill: "#94a3b8" }}
-            />
-            <YAxis
-              yAxisId="left"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 12, fill: "#94a3b8" }}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 12, fill: "#94a3b8" }}
-            />
-            <Tooltip
-              contentStyle={{
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                boxShadow: "0 6px 24px rgba(15,23,42,0.08)",
-                fontSize: 12,
-              }}
-              formatter={(value: number, name: string) => {
-                if (name === "usageCount") return [`${value}회`, "사이트 사용"];
-                if (name === "uploadCount") return [`${value}개`, "영상 업로드"];
-                return [value, name];
-              }}
-            />
-            <Legend
-              wrapperStyle={{ fontSize: "12px", color: "#64748b", paddingTop: "12px" }}
-              formatter={(value) => {
-                if (value === "usageCount") return "사이트 사용 횟수";
-                if (value === "uploadCount") return "업로드 영상 수";
-                return value;
-              }}
-            />
-            <Bar
-              yAxisId="left"
-              dataKey="uploadCount"
-              name="uploadCount"
-              radius={[8, 8, 0, 0]}
-              barSize={26}
-              fill="#60a5fa"
-            />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="usageCount"
-              name="usageCount"
-              stroke="#2563eb"
-              strokeWidth={3}
-              dot={{ r: 4, fill: "#2563eb" }}
-              activeDot={{ r: 5 }}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mt-5">
-        <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
-          <p className="text-[11px] font-bold text-blue-500 uppercase tracking-widest mb-1">
-            총 사이트 사용
-          </p>
-          <p className="text-lg font-black text-blue-700">
-            {MOCK_ACTIVITY.reduce((s, i) => s + i.usageCount, 0)}회
-          </p>
-        </div>
-        <div className="rounded-xl bg-sky-50 border border-sky-100 px-4 py-3">
-          <p className="text-[11px] font-bold text-sky-500 uppercase tracking-widest mb-1">
-            총 업로드 수
-          </p>
-          <p className="text-lg font-black text-sky-700">
-            {MOCK_ACTIVITY.reduce((s, i) => s + i.uploadCount, 0)}개
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function StepIndicator({ step }: { step: ModalStep }) {
@@ -987,81 +818,8 @@ export function DashboardPage({
           </div>
         ) : null}
 
-        <ActivityChartCard />
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <TrendingUp className="size-4 text-emerald-500" />
-              <h2 className="text-sm font-semibold text-slate-800">
-                퍼포먼스 트렌드
-              </h2>
-              <span className="ml-auto text-[10px] text-slate-400">
-                최근 7주 · 분석 데이터 기반
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {[
-                {
-                  label: "스매시",
-                  data: MOCK_TREND.smash,
-                  color: "#ef4444",
-                  current: MOCK_TREND.smash[6],
-                },
-                {
-                  label: "수비력",
-                  data: MOCK_TREND.defense,
-                  color: "#3b82f6",
-                  current: MOCK_TREND.defense[6],
-                },
-                {
-                  label: "정확도",
-                  data: MOCK_TREND.accuracy,
-                  color: "#10b981",
-                  current: MOCK_TREND.accuracy[6],
-                },
-              ].map(({ label, data, color, current }) => {
-                const prev = data[data.length - 2];
-                const diff = current - prev;
-
-                return (
-                  <div key={label} className="flex items-center gap-4">
-                    <span className="w-14 text-xs font-semibold text-gray-500 shrink-0">
-                      {label}
-                    </span>
-                    <div className="flex-1">
-                      <TrendSparkline data={data} color={color} />
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className="text-sm font-black tabular-nums"
-                        style={{ color }}
-                      >
-                        {current}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                          diff >= 0
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-red-50 text-red-500"
-                        }`}
-                      >
-                        {diff >= 0 ? "+" : ""}
-                        {diff}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <p className="mt-4 text-[10px] text-slate-300">
-              * 트렌드는 분석된 경기 리포트 데이터를 기반으로 자동 계산됩니다.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-4">
+          <div className="lg:col-span-3 flex flex-col gap-4">
             <div className="bg-gradient-to-br from-[#1a2b4c] to-[#2a4070] rounded-2xl p-5 text-white flex-1 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-white/5 -translate-y-8 translate-x-8" />
               <div className="relative z-10">

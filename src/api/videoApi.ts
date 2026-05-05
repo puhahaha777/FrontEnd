@@ -5,6 +5,8 @@ export interface VideoInfo {
   title: string;
   videoUrl: string;
   skeletonVideoUrl?: string;
+  /** 미니맵(코트 추적) 영상 URL — 백엔드 필드명 후보: minimapVideoUrl / courtVideoUrl / trackingVideoUrl */
+  minimapVideoUrl?: string;
   thumbnailUrl: string;
   duration: number;
 }

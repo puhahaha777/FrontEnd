@@ -39,6 +39,7 @@ import type {
   PlayerKey,
   HeatmapPoint,
 } from "../types/reportpageType";
+import { fetchReport } from "../api/reportpageApi";
 import { Footer } from "./ui/footer";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -365,12 +366,15 @@ const SSO = Math.round(OH * 0.1478);
 const SST = NY - SSO, SSB = NY + SSO;
 const CX = (OL + OR) / 2;
 
+type CourtZoneDist = { net: number; mid: number; back: number };
+
 function BadmintonHeatmapCourt({
   zones,
   selectedHeatmapPoint,
   setSelectedHeatmapPoint,
   onJumpToVideo,
   playerKey,
+  zoneDistribution,
   large = false,
 }: {
   zones: UiHeatmapZone[];
@@ -378,6 +382,7 @@ function BadmintonHeatmapCourt({
   setSelectedHeatmapPoint: (i: number | null) => void;
   onJumpToVideo: (t: number) => void;
   playerKey: PlayerKey;
+  zoneDistribution?: CourtZoneDist;
   large?: boolean;
 }) {
   const LW = 2.5;
@@ -546,15 +551,35 @@ function BadmintonHeatmapCourt({
     </svg>
   );
 
+  // ── 구역 분포 — props 우선, 없으면 현재 zones에서 즉석 계산 ──
+  const resolvedZoneDist: CourtZoneDist = (() => {
+    if (zoneDistribution && (zoneDistribution.net > 0 || zoneDistribution.mid > 0 || zoneDistribution.back > 0)) {
+      return zoneDistribution;
+    }
+    if (zones.length === 0) return { net: 0, mid: 0, back: 0 };
+    let n = 0, m = 0, b = 0;
+    zones.forEach((z) => {
+      if (z.y <= 33) n++;
+      else if (z.y <= 66) m++;
+      else b++;
+    });
+    const t = zones.length;
+    return {
+      net:  Math.round((n / t) * 100),
+      mid:  Math.round((m / t) * 100),
+      back: Math.round((b / t) * 100),
+    };
+  })();
+
   const infoPanel = (
     <div className="flex flex-col justify-between py-1 min-w-0">
       <div>
         <p className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-widest">포지션 분포</p>
         <div className="space-y-2.5">
           {[
-            { label: "네트 앞", pct: 28, color: "#ef4444" },
-            { label: "미드 코트", pct: 45, color: "#f97316" },
-            { label: "백 바운더리", pct: 27, color: "#3b82f6" },
+            { label: "네트 앞",    pct: resolvedZoneDist.net,  color: "#ef4444" },
+            { label: "미드 코트",  pct: resolvedZoneDist.mid,  color: "#f97316" },
+            { label: "백 바운더리", pct: resolvedZoneDist.back, color: "#3b82f6" },
           ].map(({ label, pct, color }) => (
             <div key={label}>
               <div className="flex justify-between mb-1">
@@ -752,22 +777,9 @@ export function AnalysisReportPage({
       try {
         setLoading(true);
         setErrorMsg(null);
-        
-        // 실제 API 호출
-        const token = localStorage.getItem("accessToken");
-        const response = await fetch(`/api/v1/analysis/${videoId}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
 
-        if (!response.ok) {
-          throw new Error(`분석 결과를 불러오지 못했습니다. (${response.status})`);
-        }
-
-        const res = await response.json();
+        // reportpageApi.ts의 fetchReport() 사용 — 토큰 처리·필드 정규화 모두 내부에서 처리
+        const res = await fetchReport(videoId);
         if (!alive) return;
         setReport(res);
       } catch (e: any) {
@@ -865,21 +877,44 @@ ${coaching?.feedbackText ?? "(없음)"}
     const summary = report.data.summary;
     const playerData = report.data.players[activePlayer];
     const heatmapZones = buildZones(playerData.positionAnalysis.heatmapData);
+
+    // ── 코트 구역 분포: API zoneDistribution 우선, 없으면 heatmap 좌표로 계산 ──
+    const zd = playerData.positionAnalysis.zoneDistribution;
+    const zoneDistribution = zd && (zd.net > 0 || zd.mid > 0 || zd.back > 0)
+      ? zd
+      : (() => {
+          // heatmapData의 y 좌표(0~100)로 구역 계산 (fallback)
+          const pts = playerData.positionAnalysis.heatmapData;
+          if (!pts || pts.length === 0) return { net: 0, mid: 0, back: 0 };
+          let net = 0, mid = 0, back = 0;
+          pts.forEach((p) => {
+            if (p.y <= 33) net++;
+            else if (p.y <= 66) mid++;
+            else back++;
+          });
+          const total = pts.length;
+          return {
+            net:  Math.round((net  / total) * 100),
+            mid:  Math.round((mid  / total) * 100),
+            back: Math.round((back / total) * 100),
+          };
+        })();
+
     const strokeData = [
       { name: "스매시", count: playerData.strokeTypes.smash, color: "#ef4444" },
       { name: "클리어", count: playerData.strokeTypes.clear, color: "#3b82f6" },
-      { name: "드롭", count: playerData.strokeTypes.drop, color: "#10b981" },
+      { name: "드롭",   count: playerData.strokeTypes.drop,  color: "#10b981" },
       { name: "드라이브", count: playerData.strokeTypes.drive, color: "#f59e0b" },
     ];
     const abilityData = [
-  { name: "속도", value: Number(playerData.abilityMetrics.speed) || 0 },
-  { name: "평균 랠리 시간", value: Number(playerData.abilityMetrics.AvgRallyTime) || 0 },
-  { name: "스매시", value: Number(playerData.abilityMetrics.smash) || 0 },
-  { name: "이동 거리", value: Number(playerData.abilityMetrics.distance) || 0 },
-  { name: "실책률", value: Number(playerData.abilityMetrics.errorRate) || 0 },
-];
+      { name: "속도",          value: Number(playerData.abilityMetrics.speed)        || 0 },
+      { name: "평균 랠리 시간", value: Number(playerData.abilityMetrics.AvgRallyTime) || 0 },
+      { name: "스매시",        value: Number(playerData.abilityMetrics.smash)        || 0 },
+      { name: "이동 거리",     value: Number(playerData.abilityMetrics.distance)     || 0 },
+      { name: "실책률",        value: Number(playerData.abilityMetrics.errorRate)    || 0 },
+    ];
     const accentColor = activePlayer === "bottom" ? "#3b82f6" : "#6366f1";
-    return { summary, heatmapZones, strokeData, abilityData, accentColor };
+    return { summary, heatmapZones, zoneDistribution, strokeData, abilityData, accentColor };
   }, [report, activePlayer]);
 
   useEffect(() => { setSelectedHeatmapPoint(null); }, [activePlayer]);
@@ -966,7 +1001,7 @@ ${coaching?.feedbackText ?? "(없음)"}
 
   if (!report || !ui) return null;
 
-  const { summary, heatmapZones, strokeData, abilityData, accentColor } = ui;
+  const { summary, heatmapZones, zoneDistribution, strokeData, abilityData, accentColor } = ui;
   const aiBriefing = briefings[activePlayer];
   const isBottom = activePlayer === "bottom";
 
@@ -1158,6 +1193,7 @@ ${coaching?.feedbackText ?? "(없음)"}
                     setSelectedHeatmapPoint={setSelectedHeatmapPoint}
                     onJumpToVideo={onJumpToVideo}
                     playerKey={activePlayer}
+                    zoneDistribution={zoneDistribution}
                   />
                 </CollapsibleCard>
               </div>
@@ -1269,7 +1305,7 @@ ${coaching?.feedbackText ?? "(없음)"}
         <p className="mb-5 text-sm text-gray-500">
           {isBottom ? "Bottom Player" : "Top Player"}의 코트 포지션 히트맵입니다.
         </p>
-        <BadmintonHeatmapCourt zones={heatmapZones} selectedHeatmapPoint={selectedHeatmapPoint} setSelectedHeatmapPoint={setSelectedHeatmapPoint} onJumpToVideo={onJumpToVideo} playerKey={activePlayer} large />
+        <BadmintonHeatmapCourt zones={heatmapZones} selectedHeatmapPoint={selectedHeatmapPoint} setSelectedHeatmapPoint={setSelectedHeatmapPoint} onJumpToVideo={onJumpToVideo} playerKey={activePlayer} zoneDistribution={zoneDistribution} large />
       </Modal>
 
       <Modal open={expandedPanel === "stroke"} title="스트로크 분포 상세" onClose={() => setExpandedPanel(null)}>
