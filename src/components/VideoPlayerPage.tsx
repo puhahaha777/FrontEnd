@@ -18,6 +18,9 @@ import {
   LogOut,
   User,
   Map,
+  Flame,
+  Star,
+  Timer,
 } from "lucide-react";
 import { Header, type Page } from "./Header";
 import {
@@ -52,6 +55,184 @@ interface Highlight {
   time: number;
   label: string;
   description: string;
+}
+
+// ─────────────────────────────────────────────────────────────
+// TOP 3 하이라이트 — 타임라인 이벤트에서 자동 선정
+// 우선순위: smash(스매시) > score(득점) > rally(롱랠리)
+// rally 중 duration이 긴 순으로 정렬
+// ─────────────────────────────────────────────────────────────
+interface HighlightClip {
+  rank: 1 | 2 | 3;
+  type: "smash" | "score" | "rally";
+  time: number;       // 클립 시작 시각 (초)
+  clipEnd: number;    // 클립 끝 시각 (초, time+5 또는 다음 이벤트 직전)
+  label: string;
+  description: string;
+}
+
+function pickTop3(highlights: Highlight[], totalDuration: number): HighlightClip[] {
+  if (highlights.length === 0) return [];
+
+  // 타입 우선순위
+  const priority = { smash: 3, score: 2, rally: 1 } as const;
+
+  // 중복 방지: 3초 이내 겹치는 이벤트는 하나만
+  const deduped: Highlight[] = [];
+  const sorted = [...highlights].sort((a, b) => b.time - a.time); // 역순 정렬 후 dedup
+  for (const h of sorted) {
+    if (!deduped.some((d) => Math.abs(d.time - h.time) < 3)) {
+      deduped.push(h);
+    }
+  }
+
+  // 우선순위 + 시간 역순 정렬 → 상위 3개 선택
+  const top3 = deduped
+    .sort((a, b) => {
+      const pd = priority[b.type] - priority[a.type];
+      if (pd !== 0) return pd;
+      return b.time - a.time; // 같은 타입이면 후반부 이벤트 우선
+    })
+    .slice(0, 3);
+
+  // rank 순 (시간 순서대로 1·2·3)
+  const byTime = [...top3].sort((a, b) => a.time - b.time);
+
+  return byTime.map((h, i) => {
+    const CLIP_LEN = 7; // 클립 길이(초)
+    const clipStart = Math.max(0, h.time - 1.5); // 이벤트 1.5초 전부터
+    const clipEnd   = Math.min(totalDuration || clipStart + CLIP_LEN, clipStart + CLIP_LEN);
+    return {
+      rank: (i + 1) as 1 | 2 | 3,
+      type: h.type,
+      time: clipStart,
+      clipEnd,
+      label: h.label,
+      description: h.description,
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 하이라이트 클립 카드 컴포넌트
+// ─────────────────────────────────────────────────────────────
+function HighlightClipCard({
+  clip,
+  videoSrc,
+  onJump,
+}: {
+  clip: HighlightClip;
+  videoSrc: string | null;
+  onJump: (time: number) => void;
+}) {
+  const thumbRef = useRef<HTMLVideoElement>(null);
+  const [hovered, setHovered] = useState(false);
+
+  // 썸네일: clip.time 위치 seek
+  useEffect(() => {
+    const el = thumbRef.current;
+    if (!el || !videoSrc) return;
+    el.currentTime = clip.time;
+  }, [clip.time, videoSrc]);
+
+  // hover 시 미리보기 재생
+  useEffect(() => {
+    const el = thumbRef.current;
+    if (!el || !videoSrc) return;
+    if (hovered) {
+      el.currentTime = clip.time;
+      el.play().catch(() => {});
+    } else {
+      el.pause();
+      el.currentTime = clip.time;
+    }
+  }, [hovered, clip.time, videoSrc]);
+
+  const rankColors = {
+    1: { bg: "from-amber-500 to-orange-500",  badge: "bg-amber-400 text-amber-900",  ring: "ring-amber-300" },
+    2: { bg: "from-slate-400 to-slate-500",   badge: "bg-slate-300 text-slate-700",  ring: "ring-slate-300" },
+    3: { bg: "from-orange-700 to-amber-800",  badge: "bg-orange-200 text-orange-800",ring: "ring-orange-200" },
+  } as const;
+
+  const typeIcon = {
+    smash: <Flame className="size-3" />,
+    score: <Trophy className="size-3" />,
+    rally: <Timer className="size-3" />,
+  } as const;
+
+  const typeLabel = { smash: "스매시", score: "득점", rally: "롱랠리" } as const;
+  const typeColor = {
+    smash: "bg-rose-100 text-rose-600",
+    score: "bg-amber-100 text-amber-700",
+    rally: "bg-violet-100 text-violet-700",
+  } as const;
+
+  const rc = rankColors[clip.rank];
+
+  return (
+    <div
+      className={`relative group rounded-2xl overflow-hidden bg-gray-900 cursor-pointer ring-2 ${
+        hovered ? rc.ring : "ring-transparent"
+      } transition-all duration-200 hover:scale-[1.02] hover:shadow-xl shadow-md`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => onJump(clip.time)}
+      style={{ aspectRatio: "16/9" }}
+    >
+      {/* 영상 썸네일 / 미리보기 */}
+      {videoSrc ? (
+        <video
+          ref={thumbRef}
+          src={videoSrc}
+          className="absolute inset-0 w-full h-full object-cover"
+          muted
+          playsInline
+          preload="metadata"
+          loop
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+          <Video className="size-8 text-gray-600" />
+        </div>
+      )}
+
+      {/* 오버레이 그라디언트 */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+      {/* Rank 배지 — 좌상단 */}
+      <div className={`absolute top-2.5 left-2.5 w-8 h-8 rounded-full bg-gradient-to-br ${rc.bg} flex items-center justify-center shadow-lg z-10`}>
+        <span className="text-white text-xs font-black">#{clip.rank}</span>
+      </div>
+
+      {/* 타입 배지 — 우상단 */}
+      <div className={`absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold z-10 ${typeColor[clip.type]}`}>
+        {typeIcon[clip.type]}
+        {typeLabel[clip.type]}
+      </div>
+
+      {/* hover 시 재생 아이콘 */}
+      <div className={`absolute inset-0 flex items-center justify-center z-10 transition-opacity duration-200 ${
+        hovered ? "opacity-100" : "opacity-0"
+      }`}>
+        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+          <Play className="size-5 text-white translate-x-0.5" />
+        </div>
+      </div>
+
+      {/* 하단 정보 */}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5 z-10">
+        <p className="text-white text-xs font-bold truncate leading-tight">{clip.label}</p>
+        {clip.description && (
+          <p className="text-white/60 text-[10px] truncate mt-0.5">{clip.description}</p>
+        )}
+      </div>
+
+      {/* hover 시 '클릭하여 이동' 힌트 */}
+      {hovered && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/50 to-transparent z-20" />
+      )}
+    </div>
+  );
 }
 
 type VideoMode = "original" | "analyzed";
@@ -1070,6 +1251,86 @@ export function VideoPlayerPage({
               </div>
 
             </div>
+
+            {/* ══════════════════════════════════════════════════════
+                TOP 3 하이라이트 섹션
+               ══════════════════════════════════════════════════════ */}
+            {(() => {
+              const top3 = pickTop3(derivedHighlights, activeDuration);
+              if (top3.length === 0 && !isLoading) return null;
+
+              return (
+                <div className="mt-8">
+                  {/* 섹션 헤더 */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
+                        <Star className="size-4 text-white fill-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-sm font-bold text-gray-900">TOP 3 하이라이트</h2>
+                        <p className="text-[10px] text-gray-400">스매시·득점·롱랠리 중 주요 장면</p>
+                      </div>
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-amber-200 to-transparent ml-2" />
+                    {top3.length > 0 && (
+                      <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
+                        호버 시 미리보기
+                      </span>
+                    )}
+                  </div>
+
+                  {isLoading ? (
+                    /* 로딩 스켈레톤 */
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="rounded-2xl bg-gray-200 animate-pulse" style={{ aspectRatio: "16/9" }}>
+                          <div className="w-full h-full rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : top3.length === 0 ? (
+                    <div className="flex items-center justify-center py-10 bg-white rounded-2xl border border-gray-100">
+                      <div className="text-center">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                          <Star className="size-4 text-gray-300" />
+                        </div>
+                        <p className="text-sm text-gray-400">타임라인 데이터가 없습니다</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {top3.map((clip) => (
+                        <HighlightClipCard
+                          key={clip.rank}
+                          clip={clip}
+                          videoSrc={originalVideoUrl}
+                          onJump={handleJumpTo}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 하이라이트 범례 */}
+                  {top3.length > 0 && (
+                    <div className="flex items-center gap-4 mt-3 px-1">
+                      {[
+                        { icon: <Flame className="size-3" />, label: "스매시",  color: "text-rose-500"   },
+                        { icon: <Trophy className="size-3" />, label: "득점",    color: "text-amber-500"  },
+                        { icon: <Timer className="size-3" />,  label: "롱랠리",  color: "text-violet-500" },
+                      ].map(({ icon, label, color }) => (
+                        <div key={label} className={`flex items-center gap-1 text-[10px] font-medium ${color}`}>
+                          {icon}
+                          <span className="text-gray-500">{label}</span>
+                        </div>
+                      ))}
+                      <span className="ml-auto text-[10px] text-gray-300">클릭 시 해당 구간으로 이동</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
           </div>
         </main>
       </div>
